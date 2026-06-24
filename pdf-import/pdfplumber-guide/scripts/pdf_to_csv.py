@@ -456,7 +456,7 @@ def pdf_to_csv(pdf_path: str, csv_path: str, debug: bool = False) -> int:
         writer = csv.writer(f)
         writer.writerow(["section", "req_number", "requirement"])
         for req in requirements:
-            writer.writerow([req.section, req.req_number, clean_text(req.text)])
+            writer.writerow([clean_text(req.section), req.req_number, clean_text(req.text)])
 
     print(f"  Written to: {csv_path}")
     return len(requirements)
