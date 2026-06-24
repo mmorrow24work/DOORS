@@ -57,14 +57,16 @@ python pdf_to_csv.py your_spec.pdf output.csv --debug
 
 ### Step 3: Review and import
 
-Open the output CSV. It has two columns:
+Open the output CSV. It has three columns:
 
-| section_number | requirement |
-|---------------|-------------|
-| 1 | The system shall provide a web-based user interface... |
-| 1.1 | The system shall support user authentication using... |
-| 1.1.1 | The system shall validate that the password contains... |
-| 1.1.1.1 | The system shall reject passwords that match any of... |
+| section | req_number | requirement |
+|---------|-----------|-------------|
+| Section 1 — Authentication | 1 | The system shall provide a web-based user interface... |
+| Section 1 — Authentication | 1.1 | The system shall support user authentication using... |
+| Section 2 — Data Requirements | 1.1 | The system shall store all personal data in... |
+| Section 2 — Data Requirements | 1.1.1 | The system shall encrypt all stored personal data... |
+
+The `section` column ensures that requirement `1.1` of *Section 1* and requirement `1.1` of *Section 2* are kept distinct — they are placed in the correct section context, not conflated.
 
 This CSV is compatible with the [DOORS Next CSV import format](../workarounds.md#path-2-pdf--csv--doors) — add `Artifact Type`, `Name`, and `parentBinding` columns to complete the import template.
 
@@ -146,6 +148,18 @@ NOISE_PATTERNS = [
     # ... add your own patterns here
 ]
 ```
+
+Multi-line annotations (where the `[NOTE: ...]` block spans more than one extracted line) are handled by an `in_annotation` flag. Once a noise line opening with `[` and not closing with `]` is detected, all subsequent lines are suppressed until the block closes.
+
+### 7. Section / annex tracking
+
+When the parser encounters a line matching `SECTION_HEADER_PATTERN` (e.g., `Section 1 — Authentication`, `Annex A`, `Part IV`), it records that header as the current section context. Every subsequent requirement is tagged with that context in the `section` column of the output CSV. This prevents requirement `1.1` of *Section A* from appearing adjacent to requirement `1.1` of *Section B* without distinction.
+
+### 8. Bullet normalisation
+
+Bullet characters in PDF text are often extracted as mojibake (e.g., `â€¢` for the UTF-8 bullet `•`). The script:
+1. Repairs common mojibake sequences via a lookup table before any other processing.
+2. Detects bullet lines (lines starting with `•`, `-`, `*`, or `–`) and appends them to the current requirement text using `" | "` as a separator, producing a readable inline list rather than losing the structure.
 
 ---
 
@@ -247,15 +261,15 @@ python pdf_to_csv.py input_with_text_layer.pdf output.csv
 
 ## Adding to DOORS Import Template
 
-The script outputs a 2-column CSV. To use it with the DOORS Next CSV import (see [workarounds.md](../workarounds.md#path-2-pdf--csv--doors)), you need to add three columns:
+The script outputs a 3-column CSV (`section`, `req_number`, `requirement`). To use it with the DOORS Next CSV import (see [workarounds.md](../workarounds.md#path-2-pdf--csv--doors)), add three more columns:
 
-| section_number | requirement | Artifact Type | Name | parentBinding |
-|---------------|-------------|--------------|------|---------------|
-| 1 | The system shall... | Heading | System Overview | |
-| 1.1 | The system shall support... | Functional Requirement | Authentication | 1 |
-| 1.1.1 | The system shall validate... | Functional Requirement | Password Complexity | 1.1 |
+| section | req_number | requirement | Artifact Type | Name | parentBinding |
+|---------|-----------|-------------|--------------|------|---------------|
+| Section 1 | 1 | The system shall... | Heading | System Overview | |
+| Section 1 | 1.1 | The system shall support... | Functional Requirement | Authentication | 1 |
+| Section 1 | 1.1.1 | The system shall validate... | Functional Requirement | Password Complexity | 1.1 |
 
-You can automate `parentBinding` derivation: for section `1.1.1`, the parent is `1.1` (remove the last `.N` component).
+You can automate `parentBinding` derivation: for `req_number` `1.1.1`, the parent is `1.1` (remove the last `.N` component).
 
 A helper snippet:
 
