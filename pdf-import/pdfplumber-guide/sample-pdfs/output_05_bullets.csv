@@ -1,4 +1,4 @@
-﻿section,req_number,requirement,Artifact Type,Section Name,parentBinding
+﻿section,req_number,Primary Text,Artifact Type,Name,parentBinding
 ,1,The system shall implement identity and access management controls in accordance with ISO/IEC 27001:2022 Annex A controls 5.15 through 5.18.,Functional Requirement,The system shall implement identity and access management controls in accordance with ISO/IEC 27001:2022 Annex A controls 5.15 through 5.18.,
 ,1.1,"The system shall enforce a formal user provisioning process that includes approval, documentation, and periodic review.
 - New accounts shall require line manager and information security approval before activation.

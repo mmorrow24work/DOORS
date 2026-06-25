@@ -4,12 +4,12 @@ pdf_to_csv.py — Extract numbered requirements from a PDF to CSV.
 Handles up to 6 levels of section numbering:
   1   1.1   1.1.1   1.1.1.1   1.1.1.1.1   1.1.1.1.1.1
 
-Output CSV: six columns ready for IBM DOORS Next import
+Output CSV: six columns matching IBM DOORS Next standard import attribute names
   section       — section/annex context, e.g. "Section A", "Annex B", "Part I"
   req_number    — requirement number, e.g. "1.1.1"
-  requirement   — full requirement text; bullets normalised to newline-separated "- item" lines
+  Primary Text  — full requirement text; bullets normalised to newline-separated "- item" lines
   Artifact Type — always "Functional Requirement" (edit per your DOORS type scheme)
-  Section Name  — first line of requirement text (maps to the DOORS "Name" attribute)
+  Name          — first line of requirement text (DOORS artifact short name)
   parentBinding — parent req_number (e.g. "1.1.1" → "1.1"); empty for top-level
 
 Why the section column?
@@ -21,9 +21,11 @@ Usage:
   python pdf_to_csv.py input.pdf output.csv [--debug] [--obfuscate]
 
   --debug      Print line-by-line parsing trace to stdout.
-  --obfuscate  Replace all text words with 'x' in debug output so the trace
-               can be shared without exposing client content.  Has no effect
-               on the CSV output itself.
+  --obfuscate  Also write a second CSV named <output>-OBF.csv where every
+               text word is replaced with 'x' sequences.  Numbers, section
+               numbers, bullet markers, and column structure are preserved so
+               the file can be shared for diagnostics without exposing client
+               content.  The normal CSV is still written unchanged.
 
 Strategy:
   1. Strip large-font characters (watermarks) via pdfplumber page.filter().
@@ -551,21 +553,42 @@ def pdf_to_csv(pdf_path: str, csv_path: str, debug: bool = False, obfuscate: boo
 
     requirements.sort(key=sort_key)
 
+    HEADER = ["section", "req_number", "Primary Text", "Artifact Type", "Name", "parentBinding"]
+
+    rows = []
+    for req in requirements:
+        text = clean_text(req.text)
+        rows.append([
+            fix_encoding(req.section),
+            req.req_number,
+            text,
+            "Functional Requirement",
+            make_name(text),
+            derive_parent(req.req_number),
+        ])
+
     with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f)
-        writer.writerow(["section", "req_number", "requirement", "Artifact Type", "Section Name", "parentBinding"])
-        for req in requirements:
-            text = clean_text(req.text)
-            writer.writerow([
-                fix_encoding(req.section),
-                req.req_number,
-                text,
-                "Functional Requirement",
-                make_name(text),
-                derive_parent(req.req_number),
-            ])
-
+        writer.writerow(HEADER)
+        writer.writerows(rows)
     print(f"  Written to: {csv_path}")
+
+    if obfuscate:
+        stem, ext = os.path.splitext(csv_path)
+        obf_path = stem + "-OBF" + ext
+        with open(obf_path, "w", newline="", encoding="utf-8-sig") as f:
+            writer = csv.writer(f)
+            writer.writerow(HEADER)
+            for section, req_num, text, art_type, name, parent in rows:
+                writer.writerow([
+                    _obfuscate_text(section),
+                    req_num,                      # numbers: not sensitive
+                    _obfuscate_text(text),
+                    art_type,                     # constant: not sensitive
+                    _obfuscate_text(name),
+                    parent,                       # numbers: not sensitive
+                ])
+        print(f"  Obfuscated copy: {obf_path}")
     return len(requirements)
 
 
@@ -575,7 +598,7 @@ def pdf_to_csv(pdf_path: str, csv_path: str, debug: bool = False, obfuscate: boo
 
 def main():
     if len(sys.argv) < 3:
-        print("Usage: python pdf_to_csv.py <input.pdf> <output.csv> [--debug]")
+        print("Usage: python pdf_to_csv.py <input.pdf> <output.csv> [--debug] [--obfuscate]")
         sys.exit(1)
 
     pdf_path = sys.argv[1]
