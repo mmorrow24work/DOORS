@@ -1,4 +1,4 @@
-section,req_number,requirement
+﻿section,req_number,requirement
 PART I — SYSTEM FUNCTIONAL REQUIREMENTS,1,The system shall implement a modular microservices architecture where each service is independently deployable.
 PART I — SYSTEM FUNCTIONAL REQUIREMENTS,1.1,Each microservice shall expose its API exclusively via the API Gateway; direct service-to-service calls shall not be permitted in production.
 PART I — SYSTEM FUNCTIONAL REQUIREMENTS,1.1.1,"The API Gateway shall enforce rate limiting per authenticated client at a default of 1000 requests per minute, configurable per client."

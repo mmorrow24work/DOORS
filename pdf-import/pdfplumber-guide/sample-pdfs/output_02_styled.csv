@@ -1,4 +1,4 @@
-section,req_number,requirement
+﻿section,req_number,requirement
 ,1,The system shall meet the performance thresholds defined in this
 section under all specified operational load conditions.,1.1,The system shall process a standard search query and return results within 1.5 seconds at the 95th percentile under nominal load.
 section under all specified operational load conditions.,1.1.1,Nominal load is defined as up to 200 concurrent active users submitting queries at a rate not exceeding 10 queries per second per user.

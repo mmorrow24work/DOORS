@@ -519,7 +519,7 @@ def pdf_to_csv(pdf_path: str, csv_path: str, debug: bool = False) -> int:
 
     requirements.sort(key=sort_key)
 
-    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+    with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f)
         writer.writerow(["section", "req_number", "requirement"])
         for req in requirements:
