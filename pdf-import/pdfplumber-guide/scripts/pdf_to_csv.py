@@ -9,7 +9,7 @@ Output CSV: six columns ready for IBM DOORS Next import
   req_number    — requirement number, e.g. "1.1.1"
   requirement   — full requirement text; bullets normalised to newline-separated "- item" lines
   Artifact Type — always "Functional Requirement" (edit per your DOORS type scheme)
-  Name          — first 60 chars of requirement text (DOORS artifact short name)
+  Section Name  — first line of requirement text (maps to the DOORS "Name" attribute)
   parentBinding — parent req_number (e.g. "1.1.1" → "1.1"); empty for top-level
 
 Why the section column?
@@ -18,7 +18,12 @@ Why the section column?
   1.1 of Annex B would be indistinguishable in the CSV and wrong after sorting.
 
 Usage:
-  python pdf_to_csv.py input.pdf output.csv [--debug]
+  python pdf_to_csv.py input.pdf output.csv [--debug] [--obfuscate]
+
+  --debug      Print line-by-line parsing trace to stdout.
+  --obfuscate  Replace all text words with 'x' in debug output so the trace
+               can be shared without exposing client content.  Has no effect
+               on the CSV output itself.
 
 Strategy:
   1. Strip large-font characters (watermarks) via pdfplumber page.filter().
@@ -187,6 +192,11 @@ def fix_encoding(text: str) -> str:
     return text
 
 
+def _obfuscate_text(text: str) -> str:
+    """Replace words with 'x' sequences for safe debug sharing (keeps numbers/structure)."""
+    return re.sub(r'[A-Za-z]\w*', lambda m: 'x' * len(m.group()), text)
+
+
 def is_bullet_line(text: str) -> bool:
     """Return True if the line starts with any recognised bullet character."""
     if not text:
@@ -264,12 +274,11 @@ def derive_parent(req_number: str) -> str:
 
 
 def make_name(text: str) -> str:
-    """Return first 60 chars of the first line of requirement text."""
-    first_line = text.split("\n")[0].strip()
-    return first_line[:60] + ("..." if len(first_line) > 60 else "")
+    """Return the first line of requirement text as the artifact short name."""
+    return text.split("\n")[0].strip()
 
 
-def extract_lines_from_page(page, debug: bool = False) -> list[str]:
+def extract_lines_from_page(page, debug: bool = False, obfuscate: bool = False) -> list[str]:
     """
     Extract content lines from a page, stripping watermarks (large font),
     headers, and footers.
@@ -314,7 +323,8 @@ def extract_lines_from_page(page, debug: bool = False) -> list[str]:
         if line_text:
             reconstructed.append(line_text)
             if debug:
-                print(f"  [y={y:5.1f}] {line_text[:90]}")
+                display = _obfuscate_text(line_text) if obfuscate else line_text
+                print(f"  [y={y:5.1f}] {display[:90]}")
 
     return reconstructed
 
@@ -369,7 +379,7 @@ def merge_orphaned_bullets(lines: list[str]) -> list[str]:
     return result
 
 
-def parse_requirements(lines: list[str], debug: bool = False) -> list[Requirement]:
+def parse_requirements(lines: list[str], debug: bool = False, obfuscate: bool = False) -> list[Requirement]:
     """
     Parse lines into Requirement objects, tracking section/annex context.
 
@@ -397,9 +407,12 @@ def parse_requirements(lines: list[str], debug: bool = False) -> list[Requiremen
 
         # Consume remaining lines of a multi-line annotation / note block.
         # A block opened by "[NOTE: ..." closes when a line ends with "]".
+        def _d(text: str) -> str:
+            return _obfuscate_text(text) if obfuscate else text
+
         if in_annotation:
             if debug:
-                print(f"  [ANNOT+]  {stripped[:70]}")
+                print(f"  [ANNOT+]  {_d(stripped)[:70]}")
             if stripped.endswith("]"):
                 in_annotation = False
             continue
@@ -416,7 +429,7 @@ def parse_requirements(lines: list[str], debug: bool = False) -> list[Requiremen
             else:
                 current_section_index = section_order[current_section]
             if debug:
-                print(f"  [SECTION] {stripped[:70]}")
+                print(f"  [SECTION] {_d(stripped)[:70]}")
             continue
 
         # 2. Noise — discard; detect opening of multi-line annotation blocks
@@ -424,7 +437,7 @@ def parse_requirements(lines: list[str], debug: bool = False) -> list[Requiremen
             if stripped.startswith("[") and not stripped.endswith("]"):
                 in_annotation = True
             if debug:
-                print(f"  [NOISE]   {stripped[:70]}")
+                print(f"  [NOISE]   {_d(stripped)[:70]}")
             continue
 
         # 3. Requirement number match
@@ -435,7 +448,7 @@ def parse_requirements(lines: list[str], debug: bool = False) -> list[Requiremen
 
             if req_depth(req_num) > MAX_DEPTH:
                 if debug:
-                    print(f"  [DEPTH>6] {stripped[:70]}")
+                    print(f"  [DEPTH>6] {_d(stripped)[:70]}")
                 if current:
                     current.text += " " + stripped
                 continue
@@ -450,7 +463,7 @@ def parse_requirements(lines: list[str], debug: bool = False) -> list[Requiremen
                 text=req_text,
             )
             if debug:
-                print(f"  [REQ {req_num:20s}] {req_text[:50]}")
+                print(f"  [REQ {req_num:20s}] {_d(req_text)[:50]}")
             continue
 
         # 4. Bullet continuation
@@ -461,22 +474,22 @@ def parse_requirements(lines: list[str], debug: bool = False) -> list[Requiremen
                 if normalised[len(BULLET_PREFIX):].strip():
                     current.text += BULLET_SEPARATOR + normalised
                     if debug:
-                        print(f"  [BULLET]  {normalised[:60]}")
+                        print(f"  [BULLET]  {_d(normalised)[:60]}")
                 elif debug:
-                    print(f"  [EMPTY-B] {stripped[:70]}")
+                    print(f"  [EMPTY-B] {_d(stripped)[:70]}")
             else:
                 if debug:
-                    print(f"  [SKIP-B]  {stripped[:70]}")
+                    print(f"  [SKIP-B]  {_d(stripped)[:70]}")
             continue
 
         # 5. Plain continuation
         if current:
             current.text += " " + stripped
             if debug:
-                print(f"  [CONT]    {stripped[:70]}")
+                print(f"  [CONT]    {_d(stripped)[:70]}")
         else:
             if debug:
-                print(f"  [SKIP]    {stripped[:70]}")
+                print(f"  [SKIP]    {_d(stripped)[:70]}")
 
     if current:
         requirements.append(current)
@@ -519,7 +532,7 @@ def clean_text(text: str) -> str:
 # Main pipeline
 # ---------------------------------------------------------------------------
 
-def pdf_to_csv(pdf_path: str, csv_path: str, debug: bool = False) -> int:
+def pdf_to_csv(pdf_path: str, csv_path: str, debug: bool = False, obfuscate: bool = False) -> int:
     all_lines: list[str] = []
 
     print(f"Opening: {pdf_path}")
@@ -528,19 +541,19 @@ def pdf_to_csv(pdf_path: str, csv_path: str, debug: bool = False) -> int:
         for page_num, page in enumerate(pdf.pages, start=1):
             if debug:
                 print(f"\n--- Page {page_num} ---")
-            all_lines.extend(extract_lines_from_page(page, debug=debug))
+            all_lines.extend(extract_lines_from_page(page, debug=debug, obfuscate=obfuscate))
 
     print(f"  Lines extracted: {len(all_lines)}")
 
     all_lines = rejoin_split_section_numbers(all_lines)
-    requirements = parse_requirements(all_lines, debug=debug)
+    requirements = parse_requirements(all_lines, debug=debug, obfuscate=obfuscate)
     print(f"  Requirements found: {len(requirements)}")
 
     requirements.sort(key=sort_key)
 
     with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f)
-        writer.writerow(["section", "req_number", "requirement", "Artifact Type", "Name", "parentBinding"])
+        writer.writerow(["section", "req_number", "requirement", "Artifact Type", "Section Name", "parentBinding"])
         for req in requirements:
             text = clean_text(req.text)
             writer.writerow([
@@ -568,12 +581,13 @@ def main():
     pdf_path = sys.argv[1]
     csv_path = sys.argv[2]
     debug = "--debug" in sys.argv
+    obfuscate = "--obfuscate" in sys.argv
 
     if not os.path.exists(pdf_path):
         print(f"Error: File not found: {pdf_path}")
         sys.exit(1)
 
-    count = pdf_to_csv(pdf_path, csv_path, debug=debug)
+    count = pdf_to_csv(pdf_path, csv_path, debug=debug, obfuscate=obfuscate)
     print(f"\nDone. {count} requirements extracted.")
 
     if count == 0:
