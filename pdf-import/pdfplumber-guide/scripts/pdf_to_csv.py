@@ -7,12 +7,15 @@ Handles up to 6 levels of section numbering:
 Output CSV: six columns matching IBM DOORS Next standard import attribute names
   section       — document section/annex context, e.g. "Schedule 4.1 – Annex A"
                   (custom attribute — import into a matching DOORS custom attribute)
-  Identifier    — requirement number, e.g. "1.1.1"
+  Identifier    — unique requirement identifier scoped to its section, e.g. "4.1.AA::2.1"
+                  When req numbers restart across sections the section prefix (e.g. "4.1.AA")
+                  is prepended so that DOORS can unambiguously resolve parentBinding links.
+                  For documents with globally unique numbers the plain number is used.
                   (DOORS standard — parentBinding is matched against this column)
   Primary Text  — full requirement text; bullets normalised to newline-separated "- item" lines
   Artifact Type — always "Functional Requirement" (edit per your DOORS type scheme)
   Name          — first line of requirement text (DOORS artifact short name)
-  parentBinding — Identifier of parent artifact (e.g. "1.1.1" → "1.1"); empty for top-level
+  parentBinding — Identifier of parent artifact; empty for top-level within a section
 
 Why the section column?
   A document may contain multiple sections or annexes that each restart numbering
@@ -93,6 +96,11 @@ NOISE_PATTERNS = [
     re.compile(r"^Version \d+\.\d+"),
     re.compile(r"^Document \d+\s*[—–-]"),
 ]
+
+# Separator inserted between the section prefix and the requirement number when
+# building a composite Identifier for documents with restarting req numbering.
+# E.g. "4.1.AA" + "::" + "2.1"  →  "4.1.AA::2.1"
+IDENTIFIER_SEP = "::"
 
 # y-coordinate bands (points from page edge) treated as header/footer.
 # A4 height = 841.89 pt.  Increase these if your docs have large headers/footers.
@@ -283,6 +291,37 @@ def derive_parent(req_number: str) -> str:
 def make_name(text: str) -> str:
     """Return the first line of requirement text as the artifact short name."""
     return text.split("\n")[0].strip()
+
+
+def make_section_prefix(section: str) -> str:
+    """
+    Derive a short, stable prefix from a section heading for use in Identifier.
+
+    When a document restarts requirement numbering in each section (e.g. every
+    Schedule starts again at 2.1), different sections would produce duplicate
+    Identifier values.  This prefix scopes each Identifier to its section so
+    that DOORS can resolve parentBinding links unambiguously.
+
+    "Schedule 4.1 – Annex A"      →  "4.1.AA"
+    "Schedule 4.1 – Foundation"   →  "4.1.F"
+    "Section 2 — Authentication"  →  "2.A"
+    "Annex B"                     →  "B"
+    ""                            →  ""  (no prefix — req_number used as-is)
+    """
+    if not section:
+        return ""
+    # Extract leading number (e.g. "4.1" from "Schedule 4.1 – Annex A")
+    num_match = re.search(r'\b(\d[\d.]*)', section)
+    num = num_match.group(1).rstrip('.') if num_match else ""
+    # Extract text after a dash-like separator or inside parentheses
+    sep_match = re.search(r'[–—\-]\s*(.+)$|\(([^)]+)\)', section)
+    if sep_match:
+        suffix_text = (sep_match.group(1) or sep_match.group(2) or "").strip()
+        words = re.findall(r'[A-Za-z0-9]+', suffix_text)
+        if words:
+            abbr = "".join(w[0].upper() for w in words[:5])
+            return f"{num}.{abbr}" if num else abbr
+    return num
 
 
 def extract_lines_from_page(page, debug: bool = False, obfuscate: bool = False) -> list[str]:
@@ -565,22 +604,29 @@ def pdf_to_csv(pdf_path: str, csv_path: str, debug: bool = False, obfuscate: boo
 
     requirements.sort(key=sort_key)
 
-    # "Identifier" is the DOORS Next standard column name that parentBinding
-    # matches against to resolve parent-child links.  "section" is a custom
-    # column that provides document context; DOORS imports it as a custom
-    # attribute if that attribute exists in your artifact type.
+    # "Identifier" is the DOORS Next standard column that parentBinding matches
+    # against to resolve parent-child links.  A section prefix is prepended when
+    # req numbers restart across sections so that Identifiers remain unique.
+    # "section" is a custom column; DOORS imports it if a matching attribute
+    # exists in your artifact type.
     HEADER = ["section", "Identifier", "Primary Text", "Artifact Type", "Name", "parentBinding"]
 
     rows = []
     for req in requirements:
         text = clean_text(req.text)
+        section_text = fix_encoding(req.section)
+        prefix = make_section_prefix(section_text)
+        parent_num = derive_parent(req.req_number)
+        identifier = f"{prefix}{IDENTIFIER_SEP}{req.req_number}" if prefix else req.req_number
+        parent_binding = (f"{prefix}{IDENTIFIER_SEP}{parent_num}" if prefix and parent_num
+                          else parent_num)
         rows.append([
-            fix_encoding(req.section),
-            req.req_number,
+            section_text,
+            identifier,
             text,
             "Functional Requirement",
             make_name(text),
-            derive_parent(req.req_number),
+            parent_binding,
         ])
 
     with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
@@ -595,14 +641,14 @@ def pdf_to_csv(pdf_path: str, csv_path: str, debug: bool = False, obfuscate: boo
         with open(obf_path, "w", newline="", encoding="utf-8-sig") as f:
             writer = csv.writer(f)
             writer.writerow(HEADER)
-            for section, req_num, text, art_type, name, parent in rows:
+            for section, identifier, text, art_type, name, parent in rows:
                 writer.writerow([
                     _obfuscate_text(section),
-                    req_num,                      # numbers: not sensitive
+                    identifier,          # section prefix + req number: not sensitive
                     _obfuscate_text(text),
-                    art_type,                     # constant: not sensitive
+                    art_type,            # constant: not sensitive
                     _obfuscate_text(name),
-                    parent,                       # numbers: not sensitive
+                    parent,              # section prefix + req number: not sensitive
                 ])
         print(f"  Obfuscated copy: {obf_path}")
     return len(requirements)

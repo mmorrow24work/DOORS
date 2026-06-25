@@ -44,18 +44,27 @@ python pdf_to_csv.py your_spec.pdf output.csv --debug
 
 ### Step 3: Review and import
 
-Open the output CSV. It has three columns:
+Open the output CSV. It has six columns ready for DOORS Next import:
 
-| section | req_number | requirement |
-|---------|-----------|-------------|
-| Section 1 — Authentication | 1 | The system shall provide a web-based user interface... |
-| Section 1 — Authentication | 1.1 | The system shall support user authentication using... |
-| Section 2 — Data Requirements | 1.1 | The system shall store all personal data in... |
-| Section 2 — Data Requirements | 1.1.1 | The system shall encrypt all stored personal data... |
+| section | Identifier | Primary Text | Artifact Type | Name | parentBinding |
+|---------|-----------|-------------|--------------|------|---------------|
+| Section 1 — Authentication | 1.A::1 | The system shall provide a web-based... | Functional Requirement | The system shall provide... | |
+| Section 1 — Authentication | 1.A::1.1 | The system shall support user authentication... | Functional Requirement | The system shall support... | 1.A::1 |
+| Section 2 — Data Requirements | 2.DR::1.1 | The system shall store all personal data... | Functional Requirement | The system shall store... | 2.DR::1 |
+| Section 2 — Data Requirements | 2.DR::1.1.1 | The system shall encrypt all stored... | Functional Requirement | The system shall encrypt... | 2.DR::1.1 |
 
-The `section` column ensures that requirement `1.1` of *Section 1* and requirement `1.1` of *Section 2* are kept distinct.
+**Column guide:**
 
-Bullet sub-items are appended to their parent requirement using a newline + `- ` prefix:
+| Column | DOORS role | Notes |
+|--------|-----------|-------|
+| `section` | Custom attribute | Document heading context (e.g. `Schedule 4.1 – Annex A`). DOORS imports it if a matching custom attribute exists in your artifact type; otherwise ignored. |
+| `Identifier` | **DOORS standard** | Unique requirement identifier. `parentBinding` is matched against this column by DOORS to build the requirement hierarchy. Prefixed with a section code (e.g. `4.1.AA::`) when the document restarts numbering across sections. |
+| `Primary Text` | **DOORS standard** | Full requirement text. Bullet sub-items appear on separate lines with a `- ` prefix. |
+| `Artifact Type` | **DOORS standard** | Always `Functional Requirement` — edit to match your DOORS artifact type name. |
+| `Name` | **DOORS standard** | First line of the requirement text — used as the artifact's short display title in DOORS. |
+| `parentBinding` | **DOORS standard** | Identifier of the parent artifact. DOORS reads this to construct the parent-child tree. Empty for top-level requirements within a section. |
+
+Bullet sub-items are preserved on separate lines with a `- ` prefix:
 
 ```
 1.1  The system shall support the following authentication methods:
@@ -63,7 +72,7 @@ Bullet sub-items are appended to their parent requirement using a newline + `- `
      • Single sign-on via SAML
 ```
 
-becomes one CSV cell:
+becomes one `Primary Text` cell:
 
 ```
 The system shall support the following authentication methods:
@@ -71,7 +80,7 @@ The system shall support the following authentication methods:
 - Single sign-on via SAML
 ```
 
-This CSV is compatible with the [DOORS Next CSV import format](../workarounds.md#path-2-pdf--csv--doors) — add `Artifact Type`, `Name`, and `parentBinding` columns to complete the import template.
+This CSV is ready for [DOORS Next CSV import](../workarounds.md#path-2-pdf--csv--doors) without post-processing.
 
 ---
 
@@ -298,34 +307,55 @@ python pdf_to_csv.py input_with_text_layer.pdf output.csv
 
 ---
 
-## Adding to DOORS Import Template
+## Importing into DOORS Next
 
-The script outputs a 3-column CSV (`section`, `req_number`, `requirement`). To use it with the DOORS Next CSV import (see [workarounds.md](../workarounds.md#path-2-pdf--csv--doors)), add three more columns:
+The CSV is ready to import directly — no post-processing needed.  All six columns map to DOORS Next standard attributes.
 
-| section | req_number | requirement | Artifact Type | Name | parentBinding |
-|---------|-----------|-------------|--------------|------|---------------|
-| Section 1 | 1 | The system shall... | Heading | System Overview | |
-| Section 1 | 1.1 | The system shall support... | Functional Requirement | Authentication | 1 |
-| Section 1 | 1.1.1 | The system shall validate... | Functional Requirement | Password Complexity | 1.1 |
+### How DOORS builds the hierarchy
 
-The `parentBinding` value is the `req_number` with its last component removed (`1.1.1` → `1.1`).
+DOORS Next reads `parentBinding` and looks up the matching `Identifier` in the same import file.  This creates the parent-child relationship between requirements.
+
+```
+Identifier: 4.1.AA::2       parentBinding: (empty)       ← top-level in this section
+Identifier: 4.1.AA::2.1     parentBinding: 4.1.AA::2     ← child of 2
+Identifier: 4.1.AA::2.1.1   parentBinding: 4.1.AA::2.1   ← grandchild of 2
+```
+
+The `4.1.AA::` prefix ensures uniqueness when the source document restarts numbering in each section or annex.  If your document uses globally unique numbering throughout, the prefix is omitted and `Identifier` is just the plain requirement number.
+
+### Custom `section` attribute
+
+The `section` column holds the document heading context (e.g. `Schedule 4.1 – Annex A`).  DOORS does not have a built-in `section` attribute, so you have two options:
+
+1. **Create a custom attribute** called `section` in your DOORS artifact type — DOORS will populate it during import.
+2. **Ignore the column** — DOORS silently skips columns it does not recognise.  The `Identifier` / `parentBinding` hierarchy is unaffected.
+
+### Changing `Artifact Type`
+
+The script writes `Functional Requirement` for every row.  If your DOORS module uses a different type name, edit the constant at the top of `pdf_to_csv.py`:
 
 ```python
-import csv
+# pdf_to_csv.py — edit to match your DOORS artifact type name
+ARTIFACT_TYPE = "Functional Requirement"
+```
 
-def derive_parent(req_number: str) -> str:
-    parts = req_number.split(".")
-    return ".".join(parts[:-1]) if len(parts) > 1 else ""
+Or, for a mix of types, post-process the CSV in Python:
 
-with open("output.csv") as fin, open("doors_import.csv", "w", newline="") as fout:
+```python
+import csv, re
+
+with open("output.csv", encoding="utf-8-sig") as fin, \
+     open("doors_import.csv", "w", newline="", encoding="utf-8-sig") as fout:
     reader = csv.DictReader(fin)
-    writer = csv.writer(fout)
-    writer.writerow(["Identifier", "Artifact Type", "Name", "Primary Text", "parentBinding"])
+    writer = csv.DictWriter(fout, fieldnames=reader.fieldnames)
+    writer.writeheader()
     for row in reader:
-        num = row["req_number"]
-        text = row["requirement"]
-        name = text[:60] + ("..." if len(text) > 60 else "")
-        writer.writerow([num, "Functional Requirement", name, text, derive_parent(num)])
+        # Top-level rows (no :: separator in Identifier) become Headings
+        row["Artifact Type"] = (
+            "Heading" if "::" not in row["Identifier"] and "." not in row["Identifier"]
+            else "Functional Requirement"
+        )
+        writer.writerow(row)
 ```
 
 ---
@@ -342,3 +372,6 @@ with open("output.csv") as fin, open("doors_import.csv", "w", newline="") as fou
 | Multi-column layouts may merge columns | Use `extract_words()` and filter by `x0` position |
 | Password-protected PDFs | Unlock with `pikepdf` before processing |
 | Right-to-left languages | pdfplumber has limited RTL support |
+| Schedule/section container headings not in CSV | Add them manually as `Artifact Type = Heading` rows above the first requirement in each section, or create them in DOORS before import |
+| `section` prefix collisions (two sections with the same number and same initial letters) | Override `make_section_prefix()` to return a fully spelled-out prefix, or set `IDENTIFIER_SEP` to a different separator |
+| Client data — can't share debug output | Run with `--obfuscate` to create a `<output>-OBF.csv` with all text replaced by `x` sequences; share that file for diagnostics |

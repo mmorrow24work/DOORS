@@ -15,7 +15,7 @@ A structured learning resource for **IBM Engineering Requirements Management DOO
 | [Resources](resources/presentations-and-resources.md) | Curated presentations, official courses, videos, and best practices guides |
 | [Top 10 Lessons](top-10-lessons/README.md) | Distilled lessons + research priorities for automated testing |
 | [Daily Learning Guide](daily-learning-guide/README.md) | 10-day structured programme using Bloom's Taxonomy |
-| [PDF Import](pdf-import/README.md) | Known issues and step-by-step workarounds for importing PDF requirements |
+| [PDF Import](pdf-import/README.md) | Known issues, step-by-step workarounds, and an automated extraction script |
 | [Automated Testing Priorities](automated-testing/research-priorities.md) | Prioritised research map for test integration |
 
 ## Quick Start
@@ -23,6 +23,8 @@ A structured learning resource for **IBM Engineering Requirements Management DOO
 If you are new to DOORS ELM, begin here: [Day 1 — What Is DOORS and Why Does It Matter?](daily-learning-guide/day-01.md)
 
 If you have a specific PDF import problem to solve: [PDF Import Workarounds](pdf-import/workarounds.md)
+
+If you want to extract numbered requirements from a PDF automatically: [pdfplumber extraction script](pdf-import/pdfplumber-guide/README.md)
 
 If you want to understand where to focus your research: [Top 10 Lessons](top-10-lessons/README.md)
 
