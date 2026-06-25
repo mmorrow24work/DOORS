@@ -311,6 +311,17 @@ python pdf_to_csv.py input_with_text_layer.pdf output.csv
 
 The CSV is ready to import directly — no post-processing needed.  All six columns map to DOORS Next standard attributes.
 
+### What DOORS receives from each column
+
+| Column | What DOORS does with it |
+|--------|------------------------|
+| `Identifier` | Stores it on each artifact as its unique reference number. The section prefix (e.g. `4.1.AA::`) makes it unique across the whole file even when the source document restarts numbering in each section. |
+| `parentBinding` | Reads the value, finds the row whose `Identifier` matches, and creates a parent-child link between the two artifacts. This is how DOORS builds the traceability tree — **no manual linking needed**. |
+| `Primary Text` | Stores the full requirement text as the artifact's main rich-text content, including bullet sub-items on separate lines. |
+| `Artifact Type` | Determines which DOORS artifact template to use (e.g. `Functional Requirement`). Must match a type that exists in your DOORS module. |
+| `Name` | Stores the first line of the requirement text as the artifact's short display title — this is what you see in the DOORS outline view. |
+| `section` | Stores the document heading (e.g. `Schedule 4.1 – Annex A`) as a custom attribute **if** that attribute has been defined in your artifact type. If not, DOORS silently ignores the column — the hierarchy built by `Identifier`/`parentBinding` is unaffected. The column is still useful as human context when reviewing the CSV before import. |
+
 ### How DOORS builds the hierarchy
 
 DOORS Next reads `parentBinding` and looks up the matching `Identifier` in the same import file.  This creates the parent-child relationship between requirements.
