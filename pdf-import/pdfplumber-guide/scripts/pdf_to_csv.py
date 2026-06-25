@@ -126,29 +126,48 @@ BULLET_PREFIX = "- "
 # Listed longest-first so that overlapping prefixes are caught correctly.
 _MOJIBAKE_MAP = [
     # Each tuple: (mojibake_string, correct_unicode_replacement)
-    # Mojibake arises when UTF-8 bytes are decoded as Windows-1252.
-    # U+2022 BULLET: UTF-8 E2 80 A2 -> cp1252: a-hat + euro + cent -> "a€\xa2"
-    # Listed longest-first so overlapping prefixes match correctly.
-    ("\xe2\x80\xa2",    "•"),  # BULLET
+    #
+    # Mojibake arises when a PDF font stores characters as raw UTF-8 byte
+    # sequences but the bytes are decoded one-per-character by pdfplumber.
+    # Two common decoders produce different results for the 0x80–0x9F range:
+    #
+    #   ISO-8859-1 (Latin-1): 0x80 → U+0080 (C1 control), 0x94 → U+0094
+    #   Windows-1252 (cp1252): 0x80 → U+20AC (€),          0x94 → U+201D (")
+    #
+    # Both variants are listed so the map works regardless of which decoder
+    # pdfplumber used for a given PDF.  cp1252 variants are listed first so
+    # that the more visually recognisable sequences are matched before the
+    # invisible C1 control-character variants.
+    #
+    # cp1252 variants (0x80 → €/U+20AC, 0x93 → "/U+201C, 0x94 → "/U+201D …)
+    ("â€”",    "—"),   # EM DASH        E2 80 94  (cp1252: 94→")
+    ("â€“",    "–"),   # EN DASH        E2 80 93  (cp1252: 93→")
+    ("â€¢",    "•"),   # BULLET         E2 80 A2  (cp1252: A2→¢, same as Latin-1)
+    ("â€œ",    "“"),  # LEFT DOUBLE QUOT  E2 80 9C (cp1252: 9C→œ)
+    ("â€™",    "’"),  # RIGHT SINGLE QUOT E2 80 99 (cp1252: 99→™)
+    ("â€˜",    "‘"),  # LEFT SINGLE QUOT  E2 80 98 (cp1252: 98→˜)
+    ("â€…",    "…"),   # ELLIPSIS       E2 80 A6  (cp1252: A6=¦, but A6 same)
+    # ISO-8859-1 / Latin-1 variants (0x80 → U+0080 control char)
+    ("\xe2\x80\xa2",    "•"),   # BULLET
     ("\xe2\x80\x9c",    "“"),  # LEFT DOUBLE QUOTATION MARK
     ("\xe2\x80\x9d",    "”"),  # RIGHT DOUBLE QUOTATION MARK
     ("\xe2\x80\x98",    "‘"),  # LEFT SINGLE QUOTATION MARK
     ("\xe2\x80\x99",    "’"),  # RIGHT SINGLE QUOTATION MARK
-    ("\xe2\x80\x94",    "—"),  # EM DASH
-    ("\xe2\x80\x93",    "–"),  # EN DASH
-    ("\xe2\x80\xa6",    "…"),  # HORIZONTAL ELLIPSIS
-    ("\xe2\x80\xa1",    "‡"),  # DOUBLE DAGGER
-    ("\xe2\x80\xb0",    "‰"),  # PER MILLE SIGN
-    ("\xe2\x84\xa2",    "™"),  # TRADE MARK SIGN
-    ("\xe2\x86\x92",    "→"),  # RIGHTWARDS ARROW
-    ("\xe2\x86\x90",    "←"),  # LEFTWARDS ARROW
-    ("\xc3\xa9",        "é"),  # e WITH ACUTE
-    ("\xc3\xa8",        "è"),  # e WITH GRAVE
-    ("\xc3\xa0",        "à"),  # a WITH GRAVE
-    ("\xc3\xbc",        "ü"),  # u WITH DIAERESIS
-    ("\xc3\xb6",        "ö"),  # o WITH DIAERESIS
-    ("\xc3\xa4",        "ä"),  # a WITH DIAERESIS
-    ("�",          ""),        # REPLACEMENT CHARACTER - strip
+    ("\xe2\x80\x94",    "—"),   # EM DASH
+    ("\xe2\x80\x93",    "–"),   # EN DASH
+    ("\xe2\x80\xa6",    "…"),   # HORIZONTAL ELLIPSIS
+    ("\xe2\x80\xa1",    "‡"),   # DOUBLE DAGGER
+    ("\xe2\x80\xb0",    "‰"),   # PER MILLE SIGN
+    ("\xe2\x84\xa2",    "™"),   # TRADE MARK SIGN
+    ("\xe2\x86\x92",    "→"),   # RIGHTWARDS ARROW
+    ("\xe2\x86\x90",    "←"),   # LEFTWARDS ARROW
+    ("\xc3\xa9",        "é"),   # e WITH ACUTE
+    ("\xc3\xa8",        "è"),   # e WITH GRAVE
+    ("\xc3\xa0",        "à"),   # a WITH GRAVE
+    ("\xc3\xbc",        "ü"),   # u WITH DIAERESIS
+    ("\xc3\xb6",        "ö"),   # o WITH DIAERESIS
+    ("\xc3\xa4",        "ä"),   # a WITH DIAERESIS
+    ("�",          ""),    # REPLACEMENT CHARACTER - strip
 ]
 
 
@@ -293,6 +312,38 @@ def rejoin_split_section_numbers(lines: list[str]) -> list[str]:
     return result
 
 
+_BARE_BULLET_RE = re.compile(
+    r"^(?:[-*•◦▪▫▸→]|–|—)$"
+)
+
+
+def merge_orphaned_bullets(lines: list[str]) -> list[str]:
+    """
+    Merge lines that are only a bullet marker with the line that follows them.
+
+    pdfplumber sometimes extracts the bullet character (e.g. '-', '•') at a
+    slightly different y-coordinate from its text, producing two lines where
+    one is just the marker and the next is the bare text.  Merging them gives
+    '- Defender for Servers' instead of '-' followed by 'Defender for Servers'
+    (which would otherwise be treated as a continuation of the preceding item).
+    """
+    result = []
+    i = 0
+    while i < len(lines):
+        stripped = lines[i].strip()
+        if _BARE_BULLET_RE.match(stripped) and i + 1 < len(lines):
+            next_stripped = lines[i + 1].strip()
+            # Don't merge into a section header or a new requirement number
+            if (not SECTION_HEADER_PATTERN.match(next_stripped) and
+                    not SECTION_PATTERN.match(next_stripped)):
+                result.append(stripped + " " + next_stripped)
+                i += 2
+                continue
+        result.append(lines[i])
+        i += 1
+    return result
+
+
 def parse_requirements(lines: list[str], debug: bool = False) -> list[Requirement]:
     """
     Parse lines into Requirement objects, tracking section/annex context.
@@ -304,6 +355,8 @@ def parse_requirements(lines: list[str], debug: bool = False) -> list[Requiremen
       4. Bullet          → append normalised bullet to current requirement
       5. Continuation    → append text to current requirement
     """
+    lines = merge_orphaned_bullets(lines)
+
     requirements: list[Requirement] = []
     current: Optional[Requirement] = None
 
