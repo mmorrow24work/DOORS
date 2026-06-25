@@ -139,15 +139,20 @@ _MOJIBAKE_MAP = [
     # that the more visually recognisable sequences are matched before the
     # invisible C1 control-character variants.
     #
-    # cp1252 variants (0x80 → €/U+20AC, 0x93 → "/U+201C, 0x94 → "/U+201D …)
-    ("â€”",    "—"),   # EM DASH        E2 80 94  (cp1252: 94→")
-    ("â€“",    "–"),   # EN DASH        E2 80 93  (cp1252: 93→")
-    ("â€¢",    "•"),   # BULLET         E2 80 A2  (cp1252: A2→¢, same as Latin-1)
-    ("â€œ",    "“"),  # LEFT DOUBLE QUOT  E2 80 9C (cp1252: 9C→œ)
-    ("â€™",    "’"),  # RIGHT SINGLE QUOT E2 80 99 (cp1252: 99→™)
-    ("â€˜",    "‘"),  # LEFT SINGLE QUOT  E2 80 98 (cp1252: 98→˜)
-    ("â€…",    "…"),   # ELLIPSIS       E2 80 A6  (cp1252: A6=¦, but A6 same)
-    # ISO-8859-1 / Latin-1 variants (0x80 → U+0080 control char)
+    # CID glyph references -- pdfplumber emits (cid:N) when a font has no
+    # ToUnicode map entry for a glyph.  Common in PDFs that embed bullet
+    # characters in standard fonts (Helvetica, Times) without a ToUnicode CMap.
+    ("(cid:127)",       "\u2022"),  # glyph 127 in Helvetica = bullet (U+2022)
+    ("(cid:149)",       "\u2022"),  # glyph 149 in some Windows fonts = bullet
+    # cp1252 variants (0x80->U+20AC euro, 0x93->U+201C left-dquot, 0x94->U+201D right-dquot)
+    ("\u00e2\u20ac\u201d",  "\u2014"),  # EM DASH   E2 80 94 (cp1252: 94->U+201D)
+    ("\u00e2\u20ac\u201c",  "\u2013"),  # EN DASH   E2 80 93 (cp1252: 93->U+201C)
+    ("\u00e2\u20ac\u00a2",  "\u2022"),  # BULLET    E2 80 A2 (cp1252: A2->U+00A2, same as Latin-1)
+    ("\u00e2\u20ac\u0153",  "\u201c"),  # LEFT DOUBLE QUOT  E2 80 9C (cp1252: 9C->U+0153 oe)
+    ("\u00e2\u20ac\u2122",  "\u2019"),  # RIGHT SINGLE QUOT E2 80 99 (cp1252: 99->U+2122 TM)
+    ("\u00e2\u20ac\u02dc",  "\u2018"),  # LEFT SINGLE QUOT  E2 80 98 (cp1252: 98->U+02DC tilde)
+    ("\u00e2\u20ac\u2026",  "\u2026"),  # ELLIPSIS  E2 80 A6
+        # ISO-8859-1 / Latin-1 variants (0x80 → U+0080 control char)
     ("\xe2\x80\xa2",    "•"),   # BULLET
     ("\xe2\x80\x9c",    "“"),  # LEFT DOUBLE QUOTATION MARK
     ("\xe2\x80\x9d",    "”"),  # RIGHT DOUBLE QUOTATION MARK
@@ -192,6 +197,9 @@ def is_bullet_line(text: str) -> bool:
     # Mojibake bullet at start (fix_encoding hasn't been called yet on raw lines)
     if text.startswith("â€¢"):
         return True
+    # CID glyph reference at start — bullet without ToUnicode map entry
+    if text.startswith("(cid:127)") or text.startswith("(cid:149)"):
+        return True
     return False
 
 
@@ -201,8 +209,10 @@ def normalise_bullet_line(text: str) -> str:
     return the content prefixed with BULLET_PREFIX.
     """
     text = fix_encoding(text)
-    # Strip leading bullet char
-    if text and text[0] in _BULLET_CHARS:
+    # Strip leading bullet char or CID reference
+    if text.startswith("(cid:127)") or text.startswith("(cid:149)"):
+        text = text[len("(cid:127)"):].lstrip() if text.startswith("(cid:127)") else text[len("(cid:149)"):].lstrip()
+    elif text and text[0] in _BULLET_CHARS:
         text = text[1:].lstrip()
     elif re.match(r"^[-*]\s+", text):
         text = re.sub(r"^[-*]\s+", "", text)
@@ -313,7 +323,7 @@ def rejoin_split_section_numbers(lines: list[str]) -> list[str]:
 
 
 _BARE_BULLET_RE = re.compile(
-    r"^(?:[-*•◦▪▫▸→]|–|—)$"
+    r"^(?:[-*•◦▪▫▸→]|–|—|\(cid:\d+\))$"
 )
 
 
