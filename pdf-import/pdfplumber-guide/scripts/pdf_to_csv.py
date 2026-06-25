@@ -106,7 +106,7 @@ _BULLET_CHARS = frozenset({
 
 # Separator inserted between the parent requirement text and bullet items,
 # and between successive bullet items.
-BULLET_SEPARATOR = " | "
+BULLET_SEPARATOR = "\n"
 # Prefix applied to each normalised bullet item.
 BULLET_PREFIX = "- "
 
@@ -412,10 +412,11 @@ def clean_text(text: str) -> str:
     """
     text = fix_encoding(text)
 
-    # Normalise any bullet chars that survived (e.g. raw • in continuation text)
-    # Only at word boundaries where they look like bullets (preceded by space or |)
-    for ch in _BULLET_CHARS:
-        # Replace " • text" with " | - text"
+    # Normalise any bullet chars that survived (e.g. raw • in continuation text).
+    # Em/en dashes are excluded: mid-sentence they are grammatical punctuation,
+    # not bullets. is_bullet_line() handles them correctly when at line start.
+    _RENORM_BULLET_CHARS = _BULLET_CHARS - {"—", "–"}  # — –
+    for ch in _RENORM_BULLET_CHARS:
         text = re.sub(
             r"(?<=\s)" + re.escape(ch) + r"\s*",
             BULLET_SEPARATOR + BULLET_PREFIX,
@@ -423,9 +424,12 @@ def clean_text(text: str) -> str:
         )
 
     # Fix hyphenated line-break artefacts: "require- ment" → "requirement"
-    text = re.sub(r"-\s+(?=[a-z])", "", text)
-    # Collapse whitespace
-    text = re.sub(r"\s+", " ", text)
+    # (?<=\w) ensures only word-internal hyphens are removed, not bullet "- " prefixes.
+    text = re.sub(r"(?<=\w)-[ \t]+(?=[a-z])", "", text)
+    # Collapse horizontal whitespace only (preserve newlines between bullet items).
+    text = re.sub(r"[ \t]+", " ", text)
+    # Strip trailing spaces from each line.
+    text = re.sub(r" +$", "", text, flags=re.MULTILINE)
     return text.strip()
 
 
@@ -456,7 +460,7 @@ def pdf_to_csv(pdf_path: str, csv_path: str, debug: bool = False) -> int:
         writer = csv.writer(f)
         writer.writerow(["section", "req_number", "requirement"])
         for req in requirements:
-            writer.writerow([clean_text(req.section), req.req_number, clean_text(req.text)])
+            writer.writerow([fix_encoding(req.section), req.req_number, clean_text(req.text)])
 
     print(f"  Written to: {csv_path}")
     return len(requirements)

@@ -70,7 +70,7 @@ section,req_number,requirement
 ,4,The system shall provide a baseline management module supporting the creation and retrieval of immutable requirement snapshots.
 ,4.1,The system shall allow project administrators to create a named baseline of all requirements in a module at any point in time.
 ,4.1.1,The baseline creation process shall capture the complete attribute set of every requirement in the module at the moment of creation.
-,4.1.1.1,"The baseline creation shall be atomic | either all requirements are captured or none are, with no partial baseline state."
+,4.1.1.1,"The baseline creation shall be atomic — either all requirements are captured or none are, with no partial baseline state."
 ,4.1.1.1.1,"If baseline creation fails due to a system error, the system shall log the failure, notify the administrator, and ensure no partial baseline record is stored."
 ,4.1.1.1.1.1,The atomicity guarantee shall be implemented using a database transaction that is rolled back in its entirety on any failure.
 ,4.1.2,"Each baseline shall be assigned a unique name, a version number, and a creation timestamp."

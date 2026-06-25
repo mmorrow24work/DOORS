@@ -61,7 +61,7 @@ section under all specified operational load conditions.,5.1.1.1,"The restore te
 section under all specified operational load conditions.,5.1.1.1.1,Consistency verification shall include a checksum comparison between the source database and the restored copy.
 section under all specified operational load conditions.,5.1.1.1.1.1,"If the checksum comparison fails, the backup shall be marked as invalid and a new backup shall be triggered immediately."
 section under all specified operational load conditions.,5.2,The system shall maintain a full audit trail of all data modifications for a minimum retention period of 7 years.
-section under all specified operational load conditions.,5.2.1,The audit trail shall be immutable | no user or administrator shall be able to delete or modify audit entries.
+section under all specified operational load conditions.,5.2.1,The audit trail shall be immutable — no user or administrator shall be able to delete or modify audit entries.
 section under all specified operational load conditions.,5.2.1.1,"Immutability shall be enforced at the storage layer, not solely through application-level access controls."
 section under all specified operational load conditions.,5.2.1.1.1,The storage layer immutability mechanism shall be validated by an annual penetration test.
 section under all specified operational load conditions.,5.2.1.1.1.1,Penetration test findings related to audit trail integrity shall be classified as Critical severity and remediated within 30 days.
