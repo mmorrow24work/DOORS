@@ -4,12 +4,15 @@ pdf_to_csv.py — Extract numbered requirements from a PDF to CSV.
 Handles up to 6 levels of section numbering:
   1   1.1   1.1.1   1.1.1.1   1.1.1.1.1   1.1.1.1.1.1
 
-Output CSV: three columns
-  Column A (section)     — section/annex context, e.g. "Section A", "Annex B", "Part I"
-  Column B (req_number)  — requirement number, e.g. "1.1.1"
-  Column C (requirement) — requirement text; inline bullets normalised to "- item | - item"
+Output CSV: six columns ready for IBM DOORS Next import
+  section       — section/annex context, e.g. "Section A", "Annex B", "Part I"
+  req_number    — requirement number, e.g. "1.1.1"
+  requirement   — full requirement text; bullets normalised to newline-separated "- item" lines
+  Artifact Type — always "Functional Requirement" (edit per your DOORS type scheme)
+  Name          — first 60 chars of requirement text (DOORS artifact short name)
+  parentBinding — parent req_number (e.g. "1.1.1" → "1.1"); empty for top-level
 
-Why three columns?
+Why the section column?
   A document may contain multiple sections or annexes that each restart numbering
   from 1.1. Without a section column, requirement 1.1 of Section A and requirement
   1.1 of Annex B would be indistinguishable in the CSV and wrong after sorting.
@@ -254,6 +257,18 @@ def sort_key(req: Requirement) -> tuple:
     return (req.section_index,) + tuple(int(x) for x in req.req_number.split("."))
 
 
+def derive_parent(req_number: str) -> str:
+    """Return the parent req_number (drop the last numeric component)."""
+    parts = req_number.split(".")
+    return ".".join(parts[:-1]) if len(parts) > 1 else ""
+
+
+def make_name(text: str) -> str:
+    """Return first 60 chars of the first line of requirement text."""
+    first_line = text.split("\n")[0].strip()
+    return first_line[:60] + ("..." if len(first_line) > 60 else "")
+
+
 def extract_lines_from_page(page, debug: bool = False) -> list[str]:
     """
     Extract content lines from a page, stripping watermarks (large font),
@@ -442,9 +457,13 @@ def parse_requirements(lines: list[str], debug: bool = False) -> list[Requiremen
         if is_bullet_line(stripped):
             if current:
                 normalised = normalise_bullet_line(stripped)
-                current.text += BULLET_SEPARATOR + normalised
-                if debug:
-                    print(f"  [BULLET]  {normalised[:60]}")
+                # Skip bare markers with no text (e.g. orphaned "-" with nothing to merge)
+                if normalised[len(BULLET_PREFIX):].strip():
+                    current.text += BULLET_SEPARATOR + normalised
+                    if debug:
+                        print(f"  [BULLET]  {normalised[:60]}")
+                elif debug:
+                    print(f"  [EMPTY-B] {stripped[:70]}")
             else:
                 if debug:
                     print(f"  [SKIP-B]  {stripped[:70]}")
@@ -521,9 +540,17 @@ def pdf_to_csv(pdf_path: str, csv_path: str, debug: bool = False) -> int:
 
     with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f)
-        writer.writerow(["section", "req_number", "requirement"])
+        writer.writerow(["section", "req_number", "requirement", "Artifact Type", "Name", "parentBinding"])
         for req in requirements:
-            writer.writerow([fix_encoding(req.section), req.req_number, clean_text(req.text)])
+            text = clean_text(req.text)
+            writer.writerow([
+                fix_encoding(req.section),
+                req.req_number,
+                text,
+                "Functional Requirement",
+                make_name(text),
+                derive_parent(req.req_number),
+            ])
 
     print(f"  Written to: {csv_path}")
     return len(requirements)
