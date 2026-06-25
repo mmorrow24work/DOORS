@@ -1,4 +1,4 @@
-﻿section,req_number,Primary Text,Artifact Type,Name,parentBinding
+﻿section,Identifier,Primary Text,Artifact Type,Name,parentBinding
 ,1,System Overview............................................1,Functional Requirement,System Overview............................................1,
 ,1.1,Scope and Purpose........................................1,Functional Requirement,Scope and Purpose........................................1,1
 ,1.2,System Context...........................................1,Functional Requirement,System Context...........................................1,1

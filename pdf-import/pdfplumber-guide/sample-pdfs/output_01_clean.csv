@@ -1,4 +1,4 @@
-﻿section,req_number,Primary Text,Artifact Type,Name,parentBinding
+﻿section,Identifier,Primary Text,Artifact Type,Name,parentBinding
 ,1,"The system shall provide a web-based user interface accessible via standard browsers including Chrome, Firefox, Edge, and Safari.",Functional Requirement,"The system shall provide a web-based user interface accessible via standard browsers including Chrome, Firefox, Edge, and Safari.",
 ,1.1,The system shall support user authentication using username and password credentials stored in the central identity provider.,Functional Requirement,The system shall support user authentication using username and password credentials stored in the central identity provider.,1
 ,1.1.1,"The system shall validate that the password contains a minimum of 12 characters including at least one uppercase letter, one digit, and one special character.",Functional Requirement,"The system shall validate that the password contains a minimum of 12 characters including at least one uppercase letter, one digit, and one special character.",1.1

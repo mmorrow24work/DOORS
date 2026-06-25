@@ -5,12 +5,14 @@ Handles up to 6 levels of section numbering:
   1   1.1   1.1.1   1.1.1.1   1.1.1.1.1   1.1.1.1.1.1
 
 Output CSV: six columns matching IBM DOORS Next standard import attribute names
-  section       — section/annex context, e.g. "Section A", "Annex B", "Part I"
-  req_number    — requirement number, e.g. "1.1.1"
+  section       — document section/annex context, e.g. "Schedule 4.1 – Annex A"
+                  (custom attribute — import into a matching DOORS custom attribute)
+  Identifier    — requirement number, e.g. "1.1.1"
+                  (DOORS standard — parentBinding is matched against this column)
   Primary Text  — full requirement text; bullets normalised to newline-separated "- item" lines
   Artifact Type — always "Functional Requirement" (edit per your DOORS type scheme)
   Name          — first line of requirement text (DOORS artifact short name)
-  parentBinding — parent req_number (e.g. "1.1.1" → "1.1"); empty for top-level
+  parentBinding — Identifier of parent artifact (e.g. "1.1.1" → "1.1"); empty for top-level
 
 Why the section column?
   A document may contain multiple sections or annexes that each restart numbering
@@ -52,7 +54,10 @@ from typing import Optional
 
 # Requirement section number: 1 to 6 dot-separated numeric components.
 # Matches: 1  1.1  1.1.1  1.1.1.1  1.1.1.1.1  1.1.1.1.1.1
-SECTION_PATTERN = re.compile(r"^(\d+(?:\.\d+){0,5})\s{1,4}(.+)$")
+# Also matches the "N. Text" format where the top-level number has a trailing
+# period (e.g. "4. Identity, Security and Office 365 Services").  The \.? makes
+# the trailing period optional so both "4 Text" and "4. Text" are captured.
+SECTION_PATTERN = re.compile(r"^(\d+(?:\.\d+){0,5})\.?\s{1,4}(.+)$")
 
 MAX_DEPTH = 6
 
@@ -527,6 +532,13 @@ def clean_text(text: str) -> str:
     text = re.sub(r"[ \t]+", " ", text)
     # Strip trailing spaces from each line.
     text = re.sub(r" +$", "", text, flags=re.MULTILINE)
+    # Remove lines that are bare bullet markers with no content.  These can appear
+    # when the re-normalise loop above converts an inline bullet char to "\n- " and
+    # the char had no following text (e.g. a bullet at the very end of a line).
+    text = "\n".join(
+        line for line in text.split("\n")
+        if not re.match(r"^[-*•◦▪▫▸→–—]\s*$", line)
+    )
     return text.strip()
 
 
@@ -553,7 +565,11 @@ def pdf_to_csv(pdf_path: str, csv_path: str, debug: bool = False, obfuscate: boo
 
     requirements.sort(key=sort_key)
 
-    HEADER = ["section", "req_number", "Primary Text", "Artifact Type", "Name", "parentBinding"]
+    # "Identifier" is the DOORS Next standard column name that parentBinding
+    # matches against to resolve parent-child links.  "section" is a custom
+    # column that provides document context; DOORS imports it as a custom
+    # attribute if that attribute exists in your artifact type.
+    HEADER = ["section", "Identifier", "Primary Text", "Artifact Type", "Name", "parentBinding"]
 
     rows = []
     for req in requirements:
