@@ -95,6 +95,9 @@ NOISE_PATTERNS = [
     re.compile(r"^Page \d+", re.IGNORECASE),
     re.compile(r"^Version \d+\.\d+"),
     re.compile(r"^Document \d+\s*[—–-]"),
+    # Table of Contents dotted leader: "2.1 Acronyms ............. 5"
+    # Matches any line where text is followed by 4+ dots and a page number.
+    re.compile(r"\.{4,}\s*\d+\s*$"),
 ]
 
 # Separator inserted between the section prefix and the requirement number when
@@ -468,14 +471,17 @@ def parse_requirements(lines: list[str], debug: bool = False, obfuscate: bool = 
             if current:
                 requirements.append(current)
                 current = None
-            current_section = stripped
+            # Strip any TOC dotted leader + page number from the heading text so
+            # that a TOC entry "Annex 4 – Xyz Spec ......... 82" is stored with
+            # the same clean name as the body heading "Annex 4 – Xyz Spec".
+            current_section = re.sub(r"\s*\.{4,}[\s\d]*$", "", stripped).strip()
             if current_section not in section_order:
                 current_section_index += 1
                 section_order[current_section] = current_section_index
             else:
                 current_section_index = section_order[current_section]
             if debug:
-                print(f"  [SECTION] {_d(stripped)[:70]}")
+                print(f"  [SECTION] {_d(current_section)[:70]}")
             continue
 
         # 2. Noise — discard; detect opening of multi-line annotation blocks
