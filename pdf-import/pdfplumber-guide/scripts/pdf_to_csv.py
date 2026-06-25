@@ -105,6 +105,33 @@ NOISE_PATTERNS = [
 # E.g. "4.1.AA" + "::" + "2.1"  →  "4.1.AA::2.1"
 IDENTIFIER_SEP = "::"
 
+# ---------------------------------------------------------------------------
+# Table extraction
+# ---------------------------------------------------------------------------
+
+# Set to False to disable requirements-table extraction.
+TABLE_EXTRACTION_ENABLED = True
+
+# Maps normalised column-header text to a field role.  Evaluated in order;
+# first match wins.  More-specific patterns must come before less-specific ones.
+#
+# Roles:
+#   "identifier"           — requirement ID column  → Identifier
+#   "primary_text"         — main requirement text  → Primary Text
+#   "acceptance_criterion" — appended to Primary Text labelled "Acceptance Criterion:"
+#   "source"               — appended to Primary Text labelled "Source:"
+#   "rationale"            — appended to Primary Text labelled "Rationale:"
+#
+# Unmatched columns are ignored.  Add entries here to support other table formats.
+TABLE_COLUMN_MAP = [
+    (re.compile(r"(?:module\s+)?requirement\s*id",                  re.I), "identifier"),
+    (re.compile(r"source\s+of\s+requirement",                       re.I), "source"),
+    (re.compile(r"(?:module\s+)?requirement\s+acceptance\s+criterion", re.I), "primary_text"),
+    (re.compile(r"acceptance\s+criterion",                          re.I), "acceptance_criterion"),
+    (re.compile(r"rationale|supporting\s+information",              re.I), "rationale"),
+    (re.compile(r"(?:module\s+)?requirement",                       re.I), "primary_text"),
+]
+
 # y-coordinate bands (points from page edge) treated as header/footer.
 # A4 height = 841.89 pt.  Increase these if your docs have large headers/footers.
 HEADER_MARGIN_TOP = 60
@@ -258,8 +285,9 @@ def normalise_bullet_line(text: str) -> str:
 class Requirement:
     section: str           # section/annex context, e.g. "Section A", "Annex B"
     section_index: int     # ordinal position of this section in the document
-    req_number: str        # requirement number, e.g. "1.1.1"
+    req_number: str        # requirement number, e.g. "1.1.1" or table ID e.g. "MR-001"
     text: str
+    from_table: bool = False  # True when extracted from a PDF table (not flowing text)
 
 
 # ---------------------------------------------------------------------------
@@ -281,8 +309,13 @@ def req_depth(req_number: str) -> int:
 
 
 def sort_key(req: Requirement) -> tuple:
-    """Sort by section order then numeric requirement hierarchy."""
-    return (req.section_index,) + tuple(int(x) for x in req.req_number.split("."))
+    """Sort by section order then requirement hierarchy (numeric or lexicographic)."""
+    def _part(s):
+        try:
+            return (0, int(s), "")
+        except ValueError:
+            return (1, 0, s)
+    return (req.section_index,) + tuple(_part(x) for x in req.req_number.split("."))
 
 
 def derive_parent(req_number: str) -> str:
@@ -327,10 +360,125 @@ def make_section_prefix(section: str) -> str:
     return num
 
 
-def extract_lines_from_page(page, debug: bool = False, obfuscate: bool = False) -> list[str]:
+# ---------------------------------------------------------------------------
+# Table extraction helpers
+# ---------------------------------------------------------------------------
+
+def _norm_cell(cell) -> str:
+    """Return a clean string from a table cell (handles None and multi-line cells)."""
+    if cell is None:
+        return ""
+    return re.sub(r"\s+", " ", str(cell).replace("\n", " ")).strip()
+
+
+def _detect_table_columns(header_row: list) -> "dict[int, str] | None":
+    """
+    Map table column headers to field roles using TABLE_COLUMN_MAP.
+
+    Returns {col_index: role} when at least one 'identifier' column is found
+    (indicating a requirements table), else None.
+    """
+    result: dict[int, str] = {}
+    for i, cell in enumerate(header_row):
+        norm = _norm_cell(cell).lower()
+        if not norm:
+            continue
+        for pattern, role in TABLE_COLUMN_MAP:
+            if pattern.search(norm):
+                result[i] = role
+                break
+    return result if "identifier" in result.values() else None
+
+
+def _extract_table_requirements(
+    table_rows: list,
+    current_section: str,
+    current_section_index: int,
+    debug: bool = False,
+    obfuscate: bool = False,
+) -> "list[Requirement]":
+    """
+    Convert a requirements table (list of rows from pdfplumber) to Requirement objects.
+
+    The first row is treated as the column header row.  Tables that contain no
+    'identifier' column (per TABLE_COLUMN_MAP) are silently skipped — they are
+    likely figure-reference tables, glossaries, or layout tables.
+    """
+    if not table_rows or len(table_rows) < 2:
+        return []
+
+    col_roles = _detect_table_columns(table_rows[0])
+    if col_roles is None:
+        if debug:
+            headers = [_norm_cell(c) for c in table_rows[0]]
+            print(f"  [TABLE]   skip — no identifier column in {headers}")
+        return []
+
+    def _d(t: str) -> str:
+        return _obfuscate_text(t) if obfuscate else t
+
+    if debug:
+        print(f"  [TABLE]   columns: { {i: r for i, r in col_roles.items()} }")
+
+    requirements = []
+    for row_i, row in enumerate(table_rows[1:], start=1):
+        identifier = ""
+        primary_text = ""
+        extras: dict[str, str] = {}
+
+        for col_i, role in col_roles.items():
+            cell = _norm_cell(row[col_i] if col_i < len(row) else None)
+            if not cell:
+                continue
+            if role == "identifier":
+                identifier = cell
+            elif role == "primary_text":
+                primary_text = cell
+            else:
+                extras[role] = cell
+
+        if not identifier or not primary_text:
+            if debug:
+                print(f"  [TABLE]   row {row_i} skip — id={_d(identifier)!r} text={_d(primary_text)[:30]!r}")
+            continue
+
+        # Append labelled extras (source / rationale / acceptance_criterion) to text
+        label_map = {
+            "source": "Source",
+            "rationale": "Rationale",
+            "acceptance_criterion": "Acceptance Criterion",
+        }
+        for role in ("source", "rationale", "acceptance_criterion"):
+            if role in extras:
+                primary_text += f"\n{label_map[role]}: {extras[role]}"
+
+        req = Requirement(
+            section=current_section,
+            section_index=current_section_index,
+            req_number=identifier,
+            text=primary_text,
+            from_table=True,
+        )
+        requirements.append(req)
+        if debug:
+            print(f"  [TBLREQ]  {_d(identifier)} — {_d(primary_text)[:50]}")
+
+    return requirements
+
+
+def extract_lines_from_page(
+    page,
+    debug: bool = False,
+    obfuscate: bool = False,
+    table_bboxes: "list[tuple] | None" = None,
+) -> list[str]:
     """
     Extract content lines from a page, stripping watermarks (large font),
-    headers, and footers.
+    headers, footers, and (when provided) table regions.
+
+    table_bboxes — list of (x0, top, x1, bottom) bounding boxes from
+    pdfplumber table detection.  Words that fall inside these regions are
+    excluded so table cell text is not also processed as flowing text.
     """
     page_height = page.height
 
@@ -349,11 +497,18 @@ def extract_lines_from_page(page, debug: bool = False, obfuscate: bool = False) 
     if not words:
         return []
 
+    _TOL = 3  # tolerance (pt) for table bbox containment check
+
     def in_content_zone(w):
         if w["top"] < HEADER_MARGIN_TOP:
             return False
         if w["bottom"] > page_height - FOOTER_MARGIN_BOTTOM:
             return False
+        if table_bboxes:
+            for x0, top, x1, bottom in table_bboxes:
+                if (w["x0"] >= x0 - _TOL and w["x1"] <= x1 + _TOL
+                        and w["top"] >= top - _TOL and w["bottom"] <= bottom + _TOL):
+                    return False
         return True
 
     content_words = [w for w in words if in_content_zone(w)]
@@ -593,6 +748,12 @@ def clean_text(text: str) -> str:
 
 def pdf_to_csv(pdf_path: str, csv_path: str, debug: bool = False, obfuscate: bool = False) -> int:
     all_lines: list[str] = []
+    all_table_reqs: list[Requirement] = []
+
+    # Section context shared between the per-page table scan and parse_requirements.
+    # We track it here so table requirements land in the same section as the text
+    # requirements on the same page.
+    _sec_ctx: dict = {"section": "", "index": -1, "order": {}}
 
     print(f"Opening: {pdf_path}")
     with pdfplumber.open(pdf_path) as pdf:
@@ -600,13 +761,53 @@ def pdf_to_csv(pdf_path: str, csv_path: str, debug: bool = False, obfuscate: boo
         for page_num, page in enumerate(pdf.pages, start=1):
             if debug:
                 print(f"\n--- Page {page_num} ---")
-            all_lines.extend(extract_lines_from_page(page, debug=debug, obfuscate=obfuscate))
+
+            # Detect tables first so we can exclude them from word extraction.
+            table_bboxes: list[tuple] = []
+            raw_tables: list[list] = []
+            if TABLE_EXTRACTION_ENABLED:
+                for tbl in page.find_tables():
+                    table_bboxes.append(tbl.bbox)
+                    raw_tables.append(tbl.extract())
+
+            lines = extract_lines_from_page(
+                page, debug=debug, obfuscate=obfuscate,
+                table_bboxes=table_bboxes or None,
+            )
+            all_lines.extend(lines)
+
+            # Quick section-context scan so table requirements get the right section.
+            # (parse_requirements derives its own context later from all_lines —
+            # this pass only serves table extraction.)
+            ctx = _sec_ctx
+            for line in lines:
+                s = line.strip()
+                if SECTION_HEADER_PATTERN.match(s):
+                    clean = re.sub(r"\s*\.{4,}[\s\d]*$", "", s).strip()
+                    if clean not in ctx["order"]:
+                        ctx["index"] += 1
+                        ctx["order"][clean] = ctx["index"]
+                    else:
+                        ctx["index"] = ctx["order"][clean]
+                    ctx["section"] = clean
+
+            for tbl_rows in raw_tables:
+                all_table_reqs.extend(
+                    _extract_table_requirements(
+                        tbl_rows,
+                        ctx["section"],
+                        ctx["index"],
+                        debug=debug,
+                        obfuscate=obfuscate,
+                    )
+                )
 
     print(f"  Lines extracted: {len(all_lines)}")
 
     all_lines = rejoin_split_section_numbers(all_lines)
-    requirements = parse_requirements(all_lines, debug=debug, obfuscate=obfuscate)
-    print(f"  Requirements found: {len(requirements)}")
+    text_reqs = parse_requirements(all_lines, debug=debug, obfuscate=obfuscate)
+    requirements = text_reqs + all_table_reqs
+    print(f"  Requirements found: {len(text_reqs)} (text) + {len(all_table_reqs)} (tables)")
 
     requirements.sort(key=sort_key)
 
@@ -617,15 +818,24 @@ def pdf_to_csv(pdf_path: str, csv_path: str, debug: bool = False, obfuscate: boo
     # exists in your artifact type.
     HEADER = ["section", "Identifier", "Primary Text", "Artifact Type", "Name", "parentBinding"]
 
+    _NUMERIC_ID = re.compile(r"^\d+(\.\d+)*$")
+
     rows = []
     for req in requirements:
         text = clean_text(req.text)
         section_text = fix_encoding(req.section)
-        prefix = make_section_prefix(section_text)
-        parent_num = derive_parent(req.req_number)
-        identifier = f"{prefix}{IDENTIFIER_SEP}{req.req_number}" if prefix else req.req_number
-        parent_binding = (f"{prefix}{IDENTIFIER_SEP}{parent_num}" if prefix and parent_num
-                          else parent_num)
+
+        if req.from_table and not _NUMERIC_ID.match(req.req_number):
+            # Named table IDs (e.g. "MR-001") are already globally unique —
+            # no section prefix needed and no numeric hierarchy to derive parent from.
+            identifier = req.req_number
+            parent_binding = ""
+        else:
+            prefix = make_section_prefix(section_text)
+            parent_num = derive_parent(req.req_number)
+            identifier = f"{prefix}{IDENTIFIER_SEP}{req.req_number}" if prefix else req.req_number
+            parent_binding = (f"{prefix}{IDENTIFIER_SEP}{parent_num}" if prefix and parent_num
+                              else parent_num)
         rows.append([
             section_text,
             identifier,
