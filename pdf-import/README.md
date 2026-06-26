@@ -63,15 +63,15 @@ parentBinding — Identifier of the parent requirement; used by DOORS to build h
 `Identifier` and `parentBinding` are standard DOORS Next import attributes.  DOORS matches each `parentBinding` value against another row's `Identifier` to create the parent-child requirement tree — this is how DOORS traces requirements without manual linking.  The section prefix in `Identifier` (e.g. `4.1.AA::`) ensures uniqueness when a document restarts numbering in each section or annex.
 
 ```bash
-pip install pdfplumber
-python pdfplumber-guide/scripts/pdf_to_csv.py your_spec.pdf output.csv
+pip install pdfplumber pyyaml
+python pdfplumber-guide-v2.0/scripts/pdf_to_csv.py your_spec.pdf output.csv
 ```
 
 ## Quick Decision Guide
 
 | Situation | Recommended Approach |
 |-----------|---------------------|
-| Numbered requirements, repeatable | [Automated pdfplumber script](pdfplumber-guide/README.md) |
+| Numbered requirements, repeatable | [Automated pdfplumber script](pdfplumber-guide-v2.0/README.md) |
 | Single PDF, one-time import | [PDF → Word → DOORS](workarounds.md#path-1-pdf--word--doors) |
 | Large PDFs, many attributes | [PDF → CSV → DOORS](workarounds.md#path-2-pdf--csv--doors) |
 | Regulated industry, multi-tool | [PDF → ReqIF → DOORS](workarounds.md#path-3-pdf--reqif--doors) |
