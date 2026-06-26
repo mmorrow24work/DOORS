@@ -79,6 +79,21 @@ artifact_type: "Functional Requirement"
 identifier_separator: "::"
 
 # ---------------------------------------------------------------------------
+# Page selection
+# ---------------------------------------------------------------------------
+# Process only a subset of pages (1-indexed, inclusive).
+# Useful when the first N pages are a cover, TOC, or preamble with no requirements.
+# Can also be set per-run with --pages on the command line, which overrides this key.
+#
+# Format:
+#   "65-128"  — pages 65 to 128
+#   "65-"     — page 65 to the last page
+#   "-128"    — page 1 to 128
+#   "65"      — page 65 only
+#
+# pages: "65-128"   # uncomment and edit to activate
+
+# ---------------------------------------------------------------------------
 # Layout — strip headers, footers, and watermarks
 # ---------------------------------------------------------------------------
 # Points from the top of the page to ignore (page header area).

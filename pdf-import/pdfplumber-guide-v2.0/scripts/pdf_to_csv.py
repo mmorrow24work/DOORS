@@ -104,6 +104,7 @@ class Config:
     noise_patterns: list            # [compiled re.Pattern, ...]
     bullet_separator: str
     bullet_prefix: str
+    pages: Optional[str] = None     # e.g. "65-128"; None means all pages
 
 
 def _build_section_header_pattern(keywords: list) -> re.Pattern:
@@ -159,6 +160,7 @@ def load_config(path: Optional[str]) -> Config:
         noise_patterns=noise_patterns,
         bullet_separator=str(raw.get("bullet_separator", "\n")),
         bullet_prefix=str(raw.get("bullet_prefix", "- ")),
+        pages=str(raw["pages"]) if raw.get("pages") is not None else None,
     )
 
 
@@ -647,6 +649,32 @@ def clean_text(text: str, cfg: Config) -> str:
 _NUMERIC_ID_RE = re.compile(r"^\d+(\.\d+)*$")
 
 
+def _page_indices(spec: Optional[str], total: int) -> range:
+    """
+    Convert a human-readable page range spec to a range of 0-based page indices.
+
+    Spec format (1-indexed, inclusive):
+      "65-128"  →  pages 65 to 128
+      "65-"     →  page 65 to the last page
+      "-128"    →  page 1 to 128
+      "65"      →  page 65 only
+    """
+    if not spec:
+        return range(total)
+    spec = str(spec).strip()
+    if "-" in spec:
+        lo, _, hi = spec.partition("-")
+        start = int(lo) if lo.strip() else 1
+        end   = int(hi) if hi.strip() else total
+    else:
+        start = end = int(spec)
+    start = max(1, start)
+    end   = min(total, end)
+    if start > end:
+        return range(0)
+    return range(start - 1, end)   # 0-based
+
+
 def pdf_to_csv(
     pdf_path: str,
     csv_path: str,
@@ -662,8 +690,13 @@ def pdf_to_csv(
 
     print(f"Opening: {pdf_path}")
     with pdfplumber.open(pdf_path) as pdf:
-        print(f"  Pages: {len(pdf.pages)}")
-        for page_num, page in enumerate(pdf.pages, start=1):
+        total = len(pdf.pages)
+        indices = _page_indices(cfg.pages, total)
+        page_desc = f"pages {indices.start + 1}–{indices.stop}" if cfg.pages else "all pages"
+        print(f"  Pages: {total} total, processing {len(indices)} ({page_desc})")
+        for page_num_0 in indices:
+            page = pdf.pages[page_num_0]
+            page_num = page_num_0 + 1
             if debug:
                 print(f"\n--- Page {page_num} ---")
 
@@ -768,7 +801,8 @@ def pdf_to_csv(
 
 def main():
     if len(sys.argv) < 3:
-        print("Usage: python pdf_to_csv.py <input.pdf> <output.csv> [--config FILE] [--debug] [--obfuscate]")
+        print("Usage: python pdf_to_csv.py <input.pdf> <output.csv> "
+              "[--config FILE] [--pages START-END] [--debug] [--obfuscate]")
         sys.exit(1)
 
     pdf_path = sys.argv[1]
@@ -776,16 +810,19 @@ def main():
     debug = "--debug" in sys.argv
     obfuscate = "--obfuscate" in sys.argv
 
-    config_path = None
-    if "--config" in sys.argv:
-        idx = sys.argv.index("--config")
-        if idx + 1 >= len(sys.argv):
-            print("Error: --config requires a file path argument")
-            sys.exit(1)
-        config_path = sys.argv[idx + 1]
-        if not os.path.exists(config_path):
-            print(f"Error: config file not found: {config_path}")
-            sys.exit(1)
+    def _flag_value(flag: str) -> Optional[str]:
+        if flag in sys.argv:
+            idx = sys.argv.index(flag)
+            if idx + 1 >= len(sys.argv):
+                print(f"Error: {flag} requires an argument")
+                sys.exit(1)
+            return sys.argv[idx + 1]
+        return None
+
+    config_path = _flag_value("--config")
+    if config_path and not os.path.exists(config_path):
+        print(f"Error: config file not found: {config_path}")
+        sys.exit(1)
 
     if not os.path.exists(pdf_path):
         print(f"Error: PDF not found: {pdf_path}")
@@ -794,6 +831,11 @@ def main():
     cfg = load_config(config_path)
     if config_path:
         print(f"Config: {config_path}")
+
+    # --pages overrides any 'pages' key in the config
+    pages_arg = _flag_value("--pages")
+    if pages_arg:
+        cfg.pages = pages_arg
 
     count = pdf_to_csv(pdf_path, csv_path, cfg, debug=debug, obfuscate=obfuscate)
     print(f"\nDone. {count} requirements extracted.")
