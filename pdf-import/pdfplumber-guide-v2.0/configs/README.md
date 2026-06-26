@@ -166,6 +166,45 @@ identifier_separator: "-"
 
 ---
 
+### `pages`
+
+**Type:** string (1-indexed, inclusive range)  
+**Default:** none — all pages are processed  
+**CLI override:** `--pages` (takes priority over the config key)
+
+Restricts extraction to a subset of pages.  Use this when a document has a preamble — cover sheet, table of contents, abbreviations, scope statement — before the requirements begin, or appendices after them that you don't want to import.
+
+```yaml
+pages: "65-128"   # pages 65 to 128
+pages: "65-"      # page 65 to the last page
+pages: "-128"     # page 1 to 128
+pages: "65"       # single page
+```
+
+The script prints a confirmation so you can verify the selection before checking the output:
+
+```
+Pages: 200 total, processing 64 (pages 65–128)
+```
+
+**CLI flag** — useful for one-off runs or when the start page varies between documents of the same type:
+
+```bash
+python scripts/pdf_to_csv.py input.pdf output.csv --pages 65-128
+```
+
+`--pages` always overrides the `pages` key in the YAML.  Omit both to process all pages.
+
+**When to use the config key vs the CLI flag:**
+
+| Situation | Recommendation |
+|-----------|----------------|
+| All documents of this type start requirements on the same page | Set `pages:` in the config |
+| Page range varies document-to-document | Omit from config; use `--pages` per run |
+| Quick one-off test run | `--pages` on the CLI |
+
+---
+
 ### `header_margin_top` / `footer_margin_bottom`
 
 **Type:** float (points, where 1 pt = 1/72 inch)  
@@ -237,28 +276,36 @@ re.search(r"^Table\s+\d+", "Table 3 — Module Requirements", re.IGNORECASE)
 
 ## Workflow for a new client document
 
-1. **Run without config and with `--debug`:**
+1. **Find out where the requirements start.**  Open the PDF in a viewer and note the page numbers.  Requirements typically begin after the cover sheet, table of contents, abbreviations, and scope sections.
+
+2. **Run a quick scoped debug pass** — using `--pages` from the start avoids wading through TOC noise in the debug output:
    ```bash
-   python scripts/pdf_to_csv.py client.pdf test.csv --debug 2>&1 | head -100
+   python scripts/pdf_to_csv.py client.pdf test.csv --pages 65-128 --debug 2>&1 | head -100
    ```
 
-2. **Identify problems:**
-   - `[SKIP]` lines that should be requirements → lower `max_depth`, check `require_modal_verb`
+3. **Identify problems:**
+   - TOC entries appearing as requirements → add `--pages` to skip the TOC pages entirely
+   - `[SKIP]` lines that should be requirements → check `require_modal_verb`, `max_depth`
    - `[SECTION]` lines that should be requirements (or vice versa) → adjust `section_keywords`
    - `[TABLE] skip` lines → fix `table_column_map` patterns to match the actual headers shown
    - Header/footer text appearing as `[REQ]` or `[CONT]` → increase `header_margin_top` / `footer_margin_bottom`
    - Garbled text from watermarks → lower `max_content_font_size`
 
-3. **Copy the closest ready-made config and edit it:**
+4. **Copy the closest ready-made config and edit it:**
    ```bash
    cp configs/mixed_prose_and_table.yaml configs/client_x.yaml
+   # Set pages: "65-128" in the file if the range is consistent across documents
    ```
 
-4. **Run with `--obfuscate` if you need to share debug output:**
+5. **Run with `--obfuscate` if you need to share debug output:**
    ```bash
    python scripts/pdf_to_csv.py client.pdf test.csv \
-       --config configs/client_x.yaml --debug --obfuscate 2>&1 | head -200
+       --config configs/client_x.yaml --pages 65-128 --debug --obfuscate 2>&1 | head -200
    ```
    The `test-OBF.csv` file has all text words replaced by `x` sequences and is safe to share for diagnostics without exposing client content.
 
-5. **Iterate** until the output CSV looks correct, then run the final extraction without `--debug`.
+6. **Iterate** until the output CSV looks correct, then run the final extraction without `--debug`:
+   ```bash
+   python scripts/pdf_to_csv.py client.pdf output.csv \
+       --config configs/client_x.yaml --pages 65-128
+   ```

@@ -29,10 +29,39 @@ python scripts/pdf_to_csv.py input.pdf output.csv
 # With a config file
 python scripts/pdf_to_csv.py input.pdf output.csv --config configs/defence_schedule_annex.yaml
 
-# Debug trace + obfuscated output (safe to share)
+# Process only pages 65–128 (skip cover, TOC, preamble)
+python scripts/pdf_to_csv.py input.pdf output.csv --pages 65-128
+
+# Combine all options
 python scripts/pdf_to_csv.py input.pdf output.csv \
-    --config configs/my_client.yaml --debug --obfuscate
+    --config configs/my_client.yaml --pages 65-128 --debug --obfuscate
 ```
+
+### Page selection (`--pages`)
+
+Many client documents have a cover sheet, table of contents, abbreviations section, and other preamble before the requirements start.  Use `--pages` to skip them:
+
+| Argument | Effect |
+|----------|--------|
+| `--pages 65-128` | Pages 65 to 128 inclusive |
+| `--pages 65-` | Page 65 to the last page |
+| `--pages -128` | Page 1 to 128 |
+| `--pages 65` | Page 65 only |
+
+Page numbers are 1-indexed (the number shown in your PDF viewer).  The script prints a confirmation line so you can verify:
+
+```
+Pages: 200 total, processing 64 (pages 65–128)
+```
+
+You can also set `pages` permanently in a config file for a document type where the requirements always start on the same page:
+
+```yaml
+# configs/my_client.yaml
+pages: "65-128"
+```
+
+The `--pages` command-line flag always overrides the `pages` key in the config.
 
 ## Output columns
 
@@ -86,6 +115,7 @@ python scripts/pdf_to_csv.py client.pdf output.csv --config configs/client_acme.
 
 ## What config controls
 
+- Which pages to process (`pages`)
 - Which heading keywords trigger a section context (`section_keywords`)
 - Whether modal verbs are required (`require_modal_verb`)
 - How table columns map to DOORS fields (`table_column_map`)
@@ -102,6 +132,7 @@ python scripts/pdf_to_csv.py client.pdf output.csv --config configs/client_acme.
 | PyYAML dependency | Not required | Required (`pip install pyyaml`) |
 | Table extraction | Yes (hardcoded column map) | Yes (configurable column map) |
 | Modal verb filter | No | Yes (`require_modal_verb: true`) |
+| Page range selection | No | Yes (`--pages 65-128` or `pages:` in config) |
 | All other features | Yes | Yes (same extraction engine) |
 
 For historical context see [`../pdfplumber-guide-v1.0/README.md`](../pdfplumber-guide-v1.0/README.md).
