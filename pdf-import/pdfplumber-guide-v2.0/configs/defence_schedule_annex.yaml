@@ -1,0 +1,79 @@
+# defence_schedule_annex.yaml
+#
+# For defence/aerospace/regulated-industry documents structured as:
+#   - Multiple Schedules, Annexes, or Appendices, each with requirements
+#   - Requirement numbering restarts in each Schedule/Annex (e.g. 1, 1.1, 1.1.1)
+#   - Strict "shall" language — every requirement contains a modal verb
+#   - Definitions, references, and abbreviations sections (no modal verbs) that
+#     share the same numbering scheme as requirements → require_modal_verb filters them
+#   - No requirement tables (flowing numbered paragraphs only)
+#   - Large headers/footers with classification markings and document numbers
+#
+# Run:
+#   python scripts/pdf_to_csv.py spec.pdf output.csv \
+#       --config configs/defence_schedule_annex.yaml
+
+# ---------------------------------------------------------------------------
+# Section header detection
+# ---------------------------------------------------------------------------
+# Defence documents commonly use "Schedule", "Annex", and "Appendix".
+# "Part" is included for multi-part documents.
+section_keywords:
+  - Schedule
+  - Annex
+  - Appendix
+  - Attachment
+  - Part
+  - Section
+
+# ---------------------------------------------------------------------------
+# Requirement detection
+# ---------------------------------------------------------------------------
+max_depth: 6
+
+# Only numbered lines containing shall/should/must/will/may become requirements.
+# This eliminates definitions, abbreviation lists, references, and table-of-contents
+# entries that happen to carry section numbers.
+require_modal_verb: true
+
+# ---------------------------------------------------------------------------
+# Table extraction
+# ---------------------------------------------------------------------------
+# Disable table extraction — this document type has no requirement tables.
+# Any tables present are figures, reference lists, or compliance matrices.
+table_extraction: false
+
+# ---------------------------------------------------------------------------
+# Output
+# ---------------------------------------------------------------------------
+artifact_type: "Functional Requirement"
+
+# The section prefix (e.g. "4.1.AA") is prepended to the requirement number
+# with this separator, forming the DOORS Identifier (e.g. "4.1.AA::2.1").
+# Change if your DOORS type scheme uses a different separator convention.
+identifier_separator: "::"
+
+# ---------------------------------------------------------------------------
+# Layout
+# ---------------------------------------------------------------------------
+# Defence documents often have large classification header/footer bands.
+# Increase these if header/footer text is appearing in the requirements output.
+header_margin_top: 75
+footer_margin_bottom: 65
+
+# Watermark / classification text may be in large font — filter it.
+max_content_font_size: 18
+
+# ---------------------------------------------------------------------------
+# Noise
+# ---------------------------------------------------------------------------
+extra_noise_patterns:
+  - "^OFFICIAL$"
+  - "^OFFICIAL[\\s\\-]+SENSITIVE"
+  - "^SECRET$"
+  - "^TOP\\s+SECRET"
+  - "^UNCLASSIFIED$"
+  - "^Issue\\s+\\d+"           # "Issue 3" revision markers
+  - "^Revision\\s+[A-Z0-9]"   # "Revision B" markers
+  - "^Amendment\\s+\\d+"
+  - "^\\d{1,2}/\\d{1,2}/\\d{2,4}$"  # standalone date lines

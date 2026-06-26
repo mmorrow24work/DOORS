@@ -386,3 +386,34 @@ with open("output.csv", encoding="utf-8-sig") as fin, \
 | Schedule/section container headings not in CSV | Add them manually as `Artifact Type = Heading` rows above the first requirement in each section, or create them in DOORS before import |
 | `section` prefix collisions (two sections with the same number and same initial letters) | Override `make_section_prefix()` to return a fully spelled-out prefix, or set `IDENTIFIER_SEP` to a different separator |
 | Client data — can't share debug output | Run with `--obfuscate` to create a `<output>-OBF.csv` with all text replaced by `x` sequences; share that file for diagnostics |
+
+---
+
+## Why This Became v1.0 — and What Comes Next
+
+This script (`pdf_to_csv.py`) was built for a single type of requirements document: numbered paragraphs in flowing prose.  As real client documents arrived, two practical limits appeared:
+
+1. **Different table layouts.** Several client documents store requirements in tables rather than paragraphs, and the column names differ between clients — "Module Requirement ID", "Req #", "ID", "Requirement Reference", etc.  Adding each new layout meant editing Python constants at the top of the script.
+
+2. **One size doesn't fit all.** Some clients use modal verbs ("shall", "should") reliably; others mix requirements with definitions, rationale, and commentary in the same numbered list.  Section-header keyword lists differ.  Margin sizes differ.  Every difference required a code change.
+
+**The config-file approach** separates the extraction engine (which barely changes) from the document-specific settings (which change for every client).  Instead of editing Python, you write a small YAML file that describes your document:
+
+```yaml
+# configs/client_a.yaml
+table_column_map:
+  - {pattern: "requirement id", role: identifier}
+  - {pattern: "shall statement",  role: primary_text}
+  - {pattern: "rationale",        role: rationale}
+require_modal_verb: true
+artifact_type: "Functional Requirement"
+```
+
+Then run:
+```bash
+python pdf_to_csv.py --config configs/client_a.yaml input.pdf output.csv
+```
+
+A new client is a new YAML file, not a code change.  Bug fixes and new features in the engine apply to all clients automatically.
+
+**See [`../pdfplumber-guide-v2.0/`](../pdfplumber-guide-v2.0/README.md)** for the config-driven version, including ready-made configs for common document types and a customisation guide.

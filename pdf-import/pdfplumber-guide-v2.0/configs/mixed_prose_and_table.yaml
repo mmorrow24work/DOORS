@@ -1,0 +1,93 @@
+# mixed_prose_and_table.yaml
+#
+# For documents that contain BOTH numbered prose requirements AND requirements
+# tables within the same document (often on different pages or in different sections).
+#
+# Example document structure:
+#   Section 2  — General Requirements  (numbered paragraphs: 2.1, 2.1.1, …)
+#   Section 3  — Interface Requirements (numbered paragraphs: 3.1, 3.1.1, …)
+#   Annex A    — Module Requirements   (table: ID | Requirement | Rationale)
+#   Annex B    — Performance Budget    (table: Parameter ID | Limit | Verification)
+#
+# Both sources produce rows in the same output CSV.  Prose requirements get
+# hierarchical parentBinding links; table requirements with named IDs (e.g.
+# "MR-001") are treated as flat (no parentBinding) and their IDs are used as-is.
+#
+# Run:
+#   python scripts/pdf_to_csv.py input.pdf output.csv \
+#       --config configs/mixed_prose_and_table.yaml
+
+# ---------------------------------------------------------------------------
+# Section header detection
+# ---------------------------------------------------------------------------
+section_keywords:
+  - Section
+  - Annex
+  - Appendix
+  - Schedule
+  - Part
+  - Chapter
+
+# ---------------------------------------------------------------------------
+# Requirement detection
+# ---------------------------------------------------------------------------
+max_depth: 6
+
+# Use false to capture all numbered lines as requirements (prose sections).
+# Switch to true if prose sections contain definitions/rationale alongside
+# requirements and you want to filter out non-"shall" lines.
+require_modal_verb: false
+
+# ---------------------------------------------------------------------------
+# Table extraction
+# ---------------------------------------------------------------------------
+table_extraction: true
+
+# Column map covering common table layouts for this document type.
+# The order matters: more specific patterns before generic fallbacks.
+table_column_map:
+  # Named ID columns (various phrasings)
+  - {pattern: "(?:module\\s+)?requirement\\s*id",                       role: identifier}
+  - {pattern: "req(?:uirement)?\\s*(?:#|no\\.?|number|ref(?:erence)?)", role: identifier}
+  - {pattern: "parameter\\s*id",                                        role: identifier}
+  - {pattern: "item\\s*(?:id|no\\.?|number)",                           role: identifier}
+
+  # Source / traceability
+  - {pattern: "source\\s+of\\s+requirement",                            role: source}
+  - {pattern: "derived\\s+from|parent\\s+req",                          role: source}
+  - {pattern: "traces?\\s+to",                                          role: source}
+
+  # Primary text — specific combined columns first, then generic
+  - {pattern: "module\\s+requirement\\s+acceptance\\s+criterion",       role: primary_text}
+  - {pattern: "requirement\\s+statement|shall\\s+statement",            role: primary_text}
+  - {pattern: "acceptance\\s+criterion",                                role: acceptance_criterion}
+  - {pattern: "limit|threshold|budget",                                 role: acceptance_criterion}
+
+  # Rationale / notes
+  - {pattern: "rationale|supporting\\s+information",                    role: rationale}
+  - {pattern: "notes?|comments?|remarks?",                              role: rationale}
+
+  # Generic fallbacks (must come last)
+  - {pattern: "(?:module\\s+)?requirement",                             role: primary_text}
+  - {pattern: "description|statement|text|specification",               role: primary_text}
+
+# ---------------------------------------------------------------------------
+# Output
+# ---------------------------------------------------------------------------
+artifact_type: "Functional Requirement"
+identifier_separator: "::"
+
+# ---------------------------------------------------------------------------
+# Layout
+# ---------------------------------------------------------------------------
+header_margin_top: 60
+footer_margin_bottom: 50
+max_content_font_size: 20
+
+# ---------------------------------------------------------------------------
+# Noise
+# ---------------------------------------------------------------------------
+extra_noise_patterns:
+  - "^Table\\s+\\d+"
+  - "^Figure\\s+\\d+"
+  - "^NOTE\\s*\\d*[:\\.]"

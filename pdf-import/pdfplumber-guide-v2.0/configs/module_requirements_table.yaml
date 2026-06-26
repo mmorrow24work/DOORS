@@ -1,0 +1,73 @@
+# module_requirements_table.yaml
+#
+# For documents where requirements live in a table, not numbered paragraphs.
+#
+# Target document structure:
+#   - Requirements are in one or more tables per section/annex
+#   - Table columns: Module Requirement ID | Source of Requirement |
+#                    Module Requirement Acceptance Criterion | Rationale/Supporting information
+#   - Each table row is one requirement
+#   - There may also be a small number of numbered prose requirements
+#
+# Run:
+#   python scripts/pdf_to_csv.py input.pdf output.csv \
+#       --config configs/module_requirements_table.yaml
+
+# ---------------------------------------------------------------------------
+# Section header detection
+# ---------------------------------------------------------------------------
+# These keywords identify the section headings that give table requirements
+# their section context.  Add "Clause" or "Module" if your document uses them.
+section_keywords:
+  - Section
+  - Annex
+  - Appendix
+  - Schedule
+  - Part
+  - Chapter
+  - Module
+
+# ---------------------------------------------------------------------------
+# Requirement detection
+# ---------------------------------------------------------------------------
+# The requirements are in tables, not numbered prose.  Numbered lines in the
+# body text are likely section introductions — require a modal verb so they
+# are not captured as requirements.
+require_modal_verb: true
+
+# ---------------------------------------------------------------------------
+# Table extraction
+# ---------------------------------------------------------------------------
+table_extraction: true
+
+# Column map tuned for the exact headers in this document type.
+# More-specific patterns are listed first.
+table_column_map:
+  - {pattern: "module\\s+requirement\\s*id",                          role: identifier}
+  - {pattern: "req(?:uirement)?\\s*(?:#|no\\.?|number|ref(?:erence)?)", role: identifier}
+  - {pattern: "source\\s+of\\s+requirement",                          role: source}
+  - {pattern: "module\\s+requirement\\s+acceptance\\s+criterion",     role: primary_text}
+  - {pattern: "acceptance\\s+criterion",                              role: acceptance_criterion}
+  - {pattern: "rationale|supporting\\s+information",                  role: rationale}
+  - {pattern: "module\\s+requirement",                                role: primary_text}
+
+# ---------------------------------------------------------------------------
+# Output
+# ---------------------------------------------------------------------------
+artifact_type: "Functional Requirement"
+identifier_separator: "::"
+
+# ---------------------------------------------------------------------------
+# Layout
+# ---------------------------------------------------------------------------
+header_margin_top: 60
+footer_margin_bottom: 50
+max_content_font_size: 20
+
+# ---------------------------------------------------------------------------
+# Noise
+# ---------------------------------------------------------------------------
+extra_noise_patterns:
+  - "^Table\\s+\\d+"          # "Table 3 — Module Requirements" caption lines
+  - "^Figure\\s+\\d+"         # figure captions
+  - "^NOTE\\s*\\d*[:\\.]"     # "NOTE 1: ..." style notes outside annotations

@@ -1,0 +1,112 @@
+# default.yaml — built-in defaults, explicitly written out
+#
+# This file documents every available config key and its default value.
+# Use it as a starting point: copy it, rename it for your document type,
+# and change only the keys that differ from the defaults.
+#
+# Run:
+#   python scripts/pdf_to_csv.py input.pdf output.csv --config configs/default.yaml
+
+# ---------------------------------------------------------------------------
+# Section header detection
+# ---------------------------------------------------------------------------
+# Lines that begin with one of these keywords followed by an identifier
+# (A, 1, 2.1, I, II …) are treated as section headings, not requirements.
+# They set the "section" context column for all requirements that follow.
+#
+# Add words here if your document uses different heading keywords,
+# e.g. "Clause", "Article", "Module".
+
+section_keywords:
+  - Section
+  - Annex
+  - Appendix
+  - Attachment
+  - Exhibit
+  - Schedule
+  - Part
+  - Chapter
+
+# ---------------------------------------------------------------------------
+# Requirement detection
+# ---------------------------------------------------------------------------
+# Maximum dot-depth of a requirement number.  "1.1.1.1.1.1" is depth 6.
+# Lines numbered deeper than this are treated as continuation text.
+max_depth: 6
+
+# When true, a numbered line is only captured as a requirement if it
+# contains at least one modal verb (shall, should, must, will, may).
+# Useful when definitions and commentary share the same numbering scheme.
+# When false (the default), every numbered line becomes a requirement.
+require_modal_verb: false
+
+# ---------------------------------------------------------------------------
+# Table extraction
+# ---------------------------------------------------------------------------
+# Set to false to ignore all tables and process only flowing text.
+table_extraction: true
+
+# Maps normalised column header text to a field role.
+# Patterns are case-insensitive regex; first match wins.
+#
+# Roles:
+#   identifier           → Identifier column (required to detect a requirements table)
+#   primary_text         → Primary Text column (main requirement statement)
+#   acceptance_criterion → appended to Primary Text as "Acceptance Criterion: …"
+#   source               → appended to Primary Text as "Source: …"
+#   rationale            → appended to Primary Text as "Rationale: …"
+#
+# Tables that contain no 'identifier' column are silently skipped.
+table_column_map:
+  - {pattern: "(?:module\\s+)?requirement\\s*id",                      role: identifier}
+  - {pattern: "req(?:uirement)?\\s*(?:#|no\\.?|number|ref(?:erence)?)", role: identifier}
+  - {pattern: "source\\s+of\\s+requirement",                           role: source}
+  - {pattern: "(?:module\\s+)?requirement\\s+acceptance\\s+criterion", role: primary_text}
+  - {pattern: "acceptance\\s+criterion",                               role: acceptance_criterion}
+  - {pattern: "rationale|supporting\\s+information",                   role: rationale}
+  - {pattern: "(?:module\\s+)?requirement",                            role: primary_text}
+  - {pattern: "description|statement|text",                            role: primary_text}
+
+# ---------------------------------------------------------------------------
+# Output
+# ---------------------------------------------------------------------------
+# Value written into the "Artifact Type" column for every row.
+# Change to match your DOORS artifact type name exactly.
+artifact_type: "Functional Requirement"
+
+# Separator placed between section prefix and requirement number
+# when building composite Identifiers (e.g. "4.1.AA::2.1").
+identifier_separator: "::"
+
+# ---------------------------------------------------------------------------
+# Layout — strip headers, footers, and watermarks
+# ---------------------------------------------------------------------------
+# Points from the top of the page to ignore (page header area).
+# A4 = 841.89 pt.  Increase if your document has a large header band.
+header_margin_top: 60
+
+# Points from the bottom of the page to ignore (page footer area).
+footer_margin_bottom: 50
+
+# Characters larger than this (pt) are treated as decorative (watermarks,
+# large title text).  Set to null to disable size filtering.
+max_content_font_size: 20
+
+# ---------------------------------------------------------------------------
+# Text processing
+# ---------------------------------------------------------------------------
+# Separator inserted between the requirement body text and each bullet item,
+# and between successive bullet items.
+bullet_separator: "\n"
+
+# Prefix applied to each normalised bullet item.
+bullet_prefix: "- "
+
+# ---------------------------------------------------------------------------
+# Noise filtering
+# ---------------------------------------------------------------------------
+# Extra patterns (in addition to the built-in set) to discard.
+# Each entry is a Python regex string; matched lines are silently dropped.
+# The built-in set already discards: "[NOTE:", "CONFIDENTIAL", "Page N",
+# "Version N.N", TOC dotted-leader lines ("text ........ 42"), etc.
+extra_noise_patterns: []

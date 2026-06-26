@@ -40,7 +40,16 @@ PDFs encode this as static, visual text. Converting it into a structured DOORS d
 
 For PDFs containing hierarchically numbered requirements (e.g. `4.1`, `4.1.1`, `4.1.1.1`), an automated Python extraction script is available:
 
-**[pdfplumber-guide/](pdfplumber-guide/README.md)** — extracts requirements from a PDF into a six-column CSV ready for DOORS Next import:
+**[pdfplumber-guide-v2.0/](pdfplumber-guide-v2.0/README.md)** *(current)* — config-driven extraction; one YAML file per client document type, no code changes needed per client:
+
+```bash
+python pdfplumber-guide-v2.0/scripts/pdf_to_csv.py input.pdf output.csv \
+    --config pdfplumber-guide-v2.0/configs/defence_schedule_annex.yaml
+```
+
+**[pdfplumber-guide-v1.0/](pdfplumber-guide-v1.0/README.md)** *(reference)* — single-script version with configurable constants; see its README for why v2.0 was introduced.
+
+Both versions extract requirements from a PDF into a six-column CSV ready for DOORS Next import:
 
 ```
 section       — document section heading (e.g. "Schedule 4.1 – Annex A")
